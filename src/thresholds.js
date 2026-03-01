@@ -14,7 +14,12 @@ export const getPurchases = (actions = []) => {
     return p ? parseInt(p.value) : 0;
 };
 
-export const parseMetrics = (adset) => {
+export const getActionValue = (action_values = [], type) => {
+    const val = action_values.find((a) => a.action_type === type);
+    return val ? parseFloat(val.value) : 0;
+};
+
+export const parseMetrics = (adset, cogs = 0, overhead = null) => {
     const spend = parseFloat(adset.spend || 0);
     const cpc = parseFloat(adset.cpc || 0);        // now = cost per unique link click
     const cpm = parseFloat(adset.cpm || 0);
@@ -24,62 +29,81 @@ export const parseMetrics = (adset) => {
     const atc = getATC(adset.actions);
     const purchases = getPurchases(adset.actions);
 
-    return { spend, cpc, cpm, impressions, clicks, ctr, atc, purchases };
+    // Revenue from Meta conversions
+    const revenue = getActionValue(adset.action_values, 'purchase');
+
+    // Profit Calculation
+    const totalCogs = purchases * cogs;
+
+    let txFees = 0;
+    let refundCosts = 0;
+
+    if (overhead) {
+        txFees = (purchases * (overhead.transaction_fee_fixed || 0)) +
+            (revenue * ((overhead.transaction_fee_percent || 0) / 100));
+        refundCosts = revenue * ((overhead.refund_rate_percent || 0) / 100);
+    }
+
+    const variableCosts = totalCogs + txFees + refundCosts;
+    const net_profit = revenue - spend - variableCosts;
+    const roas = spend > 0 ? (revenue / spend) : 0;
+
+    return { spend, cpc, cpm, impressions, clicks, ctr, atc, purchases, revenue, net_profit, roas };
 };
-
-// ─── Rule Definitions ────────────────────────────────────
-
-const rules = [
-    {
-        name: 'spend_10_no_atc',
-        check: (m) => m.spend >= 10 && m.atc === 0,
-        emoji: '🔴',
-        severity: 'high',
-        message: (m) => `€${m.spend.toFixed(2)} spent — zero add to carts`,
-    },
-    {
-        name: 'spend_30_no_atc',
-        check: (m) => m.spend >= 30 && m.atc === 0,
-        emoji: '🚨',
-        severity: 'critical',
-        message: (m) => `€${m.spend.toFixed(2)} spent — still zero add to carts. PAUSE?`,
-    },
-    {
-        name: 'spend_50_no_purchase',
-        check: (m) => m.spend >= 50 && m.purchases === 0,
-        emoji: '🚨',
-        severity: 'critical',
-        message: (m) => `€${m.spend.toFixed(2)} spent — zero purchases`,
-    },
-    {
-        name: 'high_cpc',
-        check: (m) => m.cpc > 1.75 && m.spend >= 5,
-        emoji: '⚠️',
-        severity: 'medium',
-        message: (m) => `CPC €${m.cpc.toFixed(2)} — above €1.75 threshold`,
-    },
-    {
-        name: 'low_ctr',
-        check: (m) => m.spend >= 10 && m.ctr < 1 && m.impressions > 500,
-        emoji: '⚠️',
-        severity: 'medium',
-        message: (m) => `CTR ${m.ctr.toFixed(2)}% — bad creative signal`,
-    },
-];
 
 // ─── Main Check Function ─────────────────────────────────
 // Returns array of triggered alerts for a given adset
 
-export const checkThresholds = (adset) => {
-    const metrics = parseMetrics(adset);
+export const checkThresholds = (adset, activeRules = [], cogs = 0, overhead = null) => {
+    const metrics = parseMetrics(adset, cogs, overhead);
+    const triggered = [];
 
-    return rules
-        .filter((rule) => rule.check(metrics))
-        .map((rule) => ({
-            rule: rule.name,
-            emoji: rule.emoji,
-            severity: rule.severity,
-            message: rule.message(metrics),
-            metrics,
-        }));
+    for (const rule of activeRules) {
+        // A rule is triggered if ALL conditions are met
+        let allMet = true;
+
+        for (const cond of rule.conditions) {
+            const actualVal = metrics[cond.metric];
+            if (actualVal === undefined) {
+                allMet = false;
+                break;
+            }
+
+            const targetVal = parseFloat(cond.value);
+
+            switch (cond.op) {
+                case '>': if (!(actualVal > targetVal)) allMet = false; break;
+                case '>=': if (!(actualVal >= targetVal)) allMet = false; break;
+                case '<': if (!(actualVal < targetVal)) allMet = false; break;
+                case '<=': if (!(actualVal <= targetVal)) allMet = false; break;
+                case '=': if (!(actualVal === targetVal)) allMet = false; break;
+                default: allMet = false; break;
+            }
+
+            if (!allMet) break; // short circuit
+        }
+
+        if (allMet && rule.conditions.length > 0) {
+            // Replace variables in message
+            let msg = rule.message_template || '';
+            msg = msg.replace(/{spend}/g, metrics.spend.toFixed(2));
+            msg = msg.replace(/{cpc}/g, metrics.cpc.toFixed(2));
+            msg = msg.replace(/{ctr}/g, metrics.ctr.toFixed(2));
+            msg = msg.replace(/{atc}/g, metrics.atc);
+            msg = msg.replace(/{purchases}/g, metrics.purchases);
+            msg = msg.replace(/{net_profit}/g, metrics.net_profit.toFixed(2));
+            msg = msg.replace(/{roas}/g, metrics.roas.toFixed(2));
+            msg = msg.replace(/{revenue}/g, metrics.revenue.toFixed(2));
+
+            triggered.push({
+                rule: rule.name,
+                emoji: rule.emoji || '⚠️',
+                severity: rule.severity || 'medium',
+                message: msg,
+                metrics
+            });
+        }
+    }
+
+    return triggered;
 };

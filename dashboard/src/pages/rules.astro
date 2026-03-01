@@ -1,0 +1,698 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Sidebar from "../components/Sidebar.astro";
+import Icon from "../components/Icon.astro";
+import { getAlertRules } from "../lib/db";
+
+let rules: any[] = [];
+let dbError = false;
+
+try {
+    rules = await getAlertRules();
+} catch (err) {
+    console.error("Failed to load rules:", err);
+    dbError = true;
+}
+
+const metrics = [
+    { value: "spend", label: "Spend (€)" },
+    { value: "cpc", label: "CPC (€)" },
+    { value: "ctr", label: "CTR (%)" },
+    { value: "atc", label: "Add to Carts" },
+    { value: "purchases", label: "Purchases" },
+    { value: "net_profit", label: "Net Profit (€)" },
+    { value: "roas", label: "ROAS (x)" },
+];
+
+const operators = [
+    { value: ">", label: "Greater than (>)" },
+    { value: ">=", label: "Greater or equal (>=)" },
+    { value: "<", label: "Less than (<)" },
+    { value: "<=", label: "Less or equal (<=)" },
+    { value: "=", label: "Equals (=)" },
+];
+---
+
+<Layout title="Alert Rules">
+    <Sidebar />
+
+    <div class="main-content">
+        <div class="header">
+            <h1 class="page-title">Alert Rules</h1>
+            <p class="text-muted" style="margin-top: 5px;">
+                Create and manage dynamic alert rules that the backend engine
+                evaluates every 5 minutes.
+            </p>
+        </div>
+
+        {
+            dbError && (
+                <div class="error-container" style="margin-bottom: 24px;">
+                    <div class="error-card">
+                        <Icon name="wifi-off" size={48} class="text-danger" />
+                        <h3 class="error-title">Database Connection Error</h3>
+                        <p class="error-text">Cannot connect to Supabase.</p>
+                    </div>
+                </div>
+            )
+        }
+
+        <!-- Active Rules List -->
+        <h2 class="section-title">Active Rules</h2>
+        <div class="rules-grid">
+            {
+                rules.map((rule) => (
+                    <div class="rule-card">
+                        <div class="rule-header">
+                            <div class="rule-title">
+                                <span class="rule-emoji">{rule.emoji}</span>
+                                <h3>{rule.name.replace(/_/g, " ")}</h3>
+                                <span class={`severity-badge ${rule.severity}`}>
+                                    {rule.severity}
+                                </span>
+                            </div>
+                            <button
+                                class="icon-btn delete-btn"
+                                data-id={rule.id}
+                                title="Delete Rule"
+                            >
+                                <Icon name="trash-2" size={16} />
+                            </button>
+                        </div>
+
+                        <div class="rule-conditions">
+                            <strong>If:</strong>
+                            <ul>
+                                {rule.conditions.map((c: any) => (
+                                    <li>
+                                        <code>{c.metric}</code>{" "}
+                                        <span>{c.op}</span>{" "}
+                                        <strong>{c.value}</strong>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+
+                        <div class="rule-message">
+                            <strong>Message Template:</strong>{" "}
+                            {rule.message_template}
+                        </div>
+                    </div>
+                ))
+            }
+
+            {
+                rules.length === 0 && (
+                    <div class="empty-state">
+                        <Icon name="bell-off" size={32} class="text-muted" />
+                        <p>No custom alert rules found.</p>
+                    </div>
+                )
+            }
+        </div>
+
+        <!-- Create New Rule Form -->
+        <div class="settings-card create-rule-card">
+            <h2 class="card-title">Create New Rule</h2>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Rule Name (Internal)</label>
+                    <div class="input-wrapper">
+                        <input
+                            type="text"
+                            id="newName"
+                            placeholder="e.g. high_spend_no_profit"
+                        />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Emoji</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="newEmoji" value="⚠️" />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Severity</label>
+                    <div class="input-wrapper select-wrapper">
+                        <select id="newSeverity">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Conditions Builder -->
+            <div class="conditions-builder">
+                <label>Conditions (ALL must be true)</label>
+                <div id="conditionsList" class="conditions-list">
+                    <!-- Default single condition -->
+                    <div class="condition-row">
+                        <div class="input-wrapper select-wrapper">
+                            <select class="cond-metric">
+                                {
+                                    metrics.map((m) => (
+                                        <option value={m.value}>
+                                            {m.label}
+                                        </option>
+                                    ))
+                                }
+                            </select>
+                        </div>
+                        <div class="input-wrapper select-wrapper">
+                            <select class="cond-op">
+                                {
+                                    operators.map((o) => (
+                                        <option value={o.value}>
+                                            {o.label}
+                                        </option>
+                                    ))
+                                }
+                            </select>
+                        </div>
+                        <div class="input-wrapper">
+                            <input
+                                type="number"
+                                step="0.01"
+                                class="cond-value"
+                                placeholder="Value"
+                            />
+                        </div>
+                        <button
+                            class="icon-btn remove-cond-btn"
+                            title="Remove"
+                            style="visibility: hidden;"
+                        >
+                            <Icon name="x" size={16} />
+                        </button>
+                    </div>
+                </div>
+                <button type="button" id="addConditionBtn" class="text-btn">
+                    <Icon name="plus" size={14} /> Add Condition
+                </button>
+            </div>
+
+            <div class="form-group" style="margin-top: 20px;">
+                <label>Message Template</label>
+                <div class="input-wrapper">
+                    <input
+                        type="text"
+                        id="newMessage"
+                        placeholder="e.g. Spent €{spend} but profit is €{net_profit}!"
+                    />
+                </div>
+                <p class="input-hint">
+                    Variables: &#123;spend&#125;, &#123;cpc&#125;,
+                    &#123;ctr&#125;, &#123;atc&#125;, &#123;purchases&#125;,
+                    &#123;net_profit&#125;, &#123;roas&#125;
+                </p>
+            </div>
+
+            <div class="actions-row">
+                <button id="saveBtn" class="primary-btn">
+                    <Icon name="plus" size={16} />
+                    Create Rule
+                </button>
+                <span id="saveStatus" class="save-status"></span>
+            </div>
+        </div>
+    </div>
+</Layout>
+
+<script>
+    // Delete handling
+    const deleteBtns = document.querySelectorAll(".delete-btn");
+    deleteBtns.forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+            const el = e.currentTarget as HTMLButtonElement;
+            const id = el.getAttribute("data-id");
+            if (confirm("Are you sure you want to delete this rule?")) {
+                el.classList.add("loading");
+                try {
+                    const res = await fetch(`/api/rules/${id}`, {
+                        method: "DELETE",
+                    });
+                    if (res.ok) {
+                        window.location.reload();
+                    } else {
+                        alert("Failed to delete rule.");
+                    }
+                } catch (e) {
+                    alert("Error deleting rule.");
+                }
+                el.classList.remove("loading");
+            }
+        });
+    });
+
+    // Condition Builder
+    const addCondBtn = document.getElementById("addConditionBtn");
+    const conditionsList = document.getElementById("conditionsList");
+
+    if (addCondBtn && conditionsList) {
+        addCondBtn.addEventListener("click", () => {
+            const firstRow = conditionsList.querySelector(".condition-row");
+            if (firstRow) {
+                const newRow = firstRow.cloneNode(true) as HTMLElement;
+                // clear value
+                const input = newRow.querySelector(
+                    ".cond-value",
+                ) as HTMLInputElement;
+                if (input) input.value = "";
+                // show remove button
+                const removeBtn = newRow.querySelector(
+                    ".remove-cond-btn",
+                ) as HTMLElement;
+                if (removeBtn) removeBtn.style.visibility = "visible";
+
+                conditionsList.appendChild(newRow);
+                attachRemoveEvents();
+            }
+        });
+    }
+
+    function attachRemoveEvents() {
+        document.querySelectorAll(".remove-cond-btn").forEach((btn) => {
+            btn.removeEventListener("click", removeRow);
+            btn.addEventListener("click", removeRow);
+        });
+    }
+
+    function removeRow(e: Event) {
+        const btn = e.currentTarget as HTMLElement;
+        const row = btn.closest(".condition-row");
+        if (row && document.querySelectorAll(".condition-row").length > 1) {
+            row.remove();
+        }
+    }
+    attachRemoveEvents();
+
+    // Save handling
+    const saveBtn = document.getElementById("saveBtn");
+    const saveStatus = document.getElementById("saveStatus");
+
+    if (saveBtn) {
+        saveBtn.addEventListener("click", async () => {
+            // Collect conditions
+            const conditions: any[] = [];
+            let isValid = true;
+
+            document.querySelectorAll(".condition-row").forEach((row) => {
+                const metric = (
+                    row.querySelector(".cond-metric") as HTMLSelectElement
+                ).value;
+                const op = (row.querySelector(".cond-op") as HTMLSelectElement)
+                    .value;
+                const valStr = (
+                    row.querySelector(".cond-value") as HTMLInputElement
+                ).value;
+
+                if (valStr.trim() === "") isValid = false;
+
+                conditions.push({
+                    metric,
+                    op,
+                    value: parseFloat(valStr),
+                });
+            });
+
+            const name = (
+                document.getElementById("newName") as HTMLInputElement
+            ).value.trim();
+            const emoji =
+                (
+                    document.getElementById("newEmoji") as HTMLInputElement
+                ).value.trim() || "⚠️";
+            const severity = (
+                document.getElementById("newSeverity") as HTMLSelectElement
+            ).value;
+            const message = (
+                document.getElementById("newMessage") as HTMLInputElement
+            ).value.trim();
+
+            if (!name || !message || !isValid) {
+                if (saveStatus) {
+                    saveStatus.innerText =
+                        "Please fill in all fields (including all condition values).";
+                    saveStatus.className = "save-status error";
+                }
+                return;
+            }
+
+            saveBtn.classList.add("loading");
+            saveBtn.innerText = "Saving...";
+            if (saveStatus) saveStatus.innerText = "";
+
+            try {
+                const payload = {
+                    name,
+                    emoji,
+                    severity,
+                    message_template: message,
+                    conditions,
+                    is_active: true,
+                };
+
+                const res = await fetch("/api/rules", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    const data = await res.json();
+                    throw new Error(data.error || "Failed to save");
+                }
+            } catch (e: any) {
+                if (saveStatus) {
+                    saveStatus.innerText = `Error: ${e.message}`;
+                    saveStatus.className = "save-status error";
+                }
+            } finally {
+                saveBtn.classList.remove("loading");
+                saveBtn.innerText = "Create Rule";
+            }
+        });
+    }
+</script>
+
+<style>
+    .section-title {
+        font-size: 18px;
+        font-weight: 600;
+        margin: 24px 0 16px 0;
+        color: var(--text-primary);
+    }
+
+    .rules-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 16px;
+        margin-bottom: 32px;
+    }
+
+    .rule-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .rule-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .rule-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .rule-title h3 {
+        font-size: 15px;
+        font-weight: 600;
+        margin: 0;
+        color: var(--text-primary);
+        text-transform: capitalize;
+    }
+
+    .severity-badge {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-weight: 600;
+        text-transform: capitalize;
+    }
+
+    .severity-badge.low {
+        background: #3b82f633;
+        color: #60a5fa;
+    }
+    .severity-badge.medium {
+        background: #f59e0b33;
+        color: #fbbf24;
+    }
+    .severity-badge.high {
+        background: #ef444433;
+        color: #f87171;
+    }
+    .severity-badge.critical {
+        background: #fee2e2;
+        color: #b91c1c;
+    }
+
+    .rule-conditions {
+        background: var(--bg-primary);
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        border: 1px solid var(--border-color);
+    }
+
+    .rule-conditions ul {
+        margin: 4px 0 0 0;
+        padding-left: 20px;
+        color: var(--text-muted);
+    }
+
+    .rule-conditions code {
+        background: var(--bg-secondary);
+        padding: 2px 6px;
+        border-radius: 4px;
+        color: var(--text-primary);
+    }
+
+    .rule-message {
+        font-size: 13px;
+        color: var(--text-muted);
+        line-height: 1.4;
+    }
+
+    .empty-state {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 48px;
+        background: var(--bg-secondary);
+        border: 1px dashed var(--border-color);
+        border-radius: 12px;
+        text-align: center;
+        color: var(--text-muted);
+        gap: 12px;
+    }
+
+    /* Form Styles */
+    .create-rule-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 24px;
+        margin-top: 24px;
+    }
+
+    .card-title {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        color: var(--text-primary);
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    .input-wrapper {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        overflow: hidden;
+        display: flex;
+        transition: border-color 0.2s;
+    }
+
+    .input-wrapper:focus-within {
+        border-color: var(--accent-color);
+    }
+
+    input,
+    select {
+        width: 100%;
+        border: none;
+        background: transparent;
+        padding: 10px 12px;
+        color: var(--text-primary);
+        font-size: 14px;
+        outline: none;
+    }
+
+    .select-wrapper {
+        position: relative;
+    }
+
+    .select-wrapper::after {
+        content: "";
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 0;
+        height: 0;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 5px solid var(--text-muted);
+        pointer-events: none;
+    }
+
+    select {
+        appearance: none;
+        padding-right: 32px;
+    }
+
+    select option {
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+    }
+
+    .input-hint {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin: 0;
+    }
+
+    .conditions-builder {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 16px;
+        margin-top: 16px;
+    }
+
+    .conditions-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin: 12px 0;
+    }
+
+    .condition-row {
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr auto;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .text-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        font-size: 13px;
+        cursor: pointer;
+        padding: 6px 0;
+        transition: color 0.1s;
+    }
+    .text-btn:hover {
+        color: var(--text-primary);
+    }
+
+    .icon-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: var(--text-muted);
+        padding: 6px;
+        border-radius: 6px;
+        transition: all 0.1s;
+    }
+
+    .icon-btn:hover {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+    }
+
+    .icon-btn.delete-btn:hover,
+    .icon-btn.remove-cond-btn:hover {
+        color: var(--color-danger);
+    }
+
+    .actions-row {
+        margin-top: 24px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .primary-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: var(--accent-color);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 12px 24px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+            opacity 0.2s,
+            transform 0.1s;
+    }
+
+    .primary-btn:hover {
+        opacity: 0.9;
+    }
+    .primary-btn:active {
+        transform: scale(0.98);
+    }
+    .primary-btn.loading {
+        opacity: 0.7;
+        pointer-events: none;
+    }
+
+    .save-status {
+        font-size: 14px;
+        font-weight: 500;
+    }
+    .save-status.success {
+        color: var(--color-success);
+    }
+    .save-status.error {
+        color: var(--color-danger);
+    }
+</style>

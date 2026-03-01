@@ -11,7 +11,7 @@
 import 'dotenv/config';
 import cron from 'node-cron';
 import { logger } from './logger.js';
-import { initDb, hasAlertedToday, logAlert, saveSnapshot, saveDailyStats, closeDb } from './db.js';
+import { initDb, hasAlertedToday, logAlert, saveSnapshot, saveDailyStats, closeDb, getActiveAlertRules, getCampaignSettings, getBusinessOverhead } from './db.js';
 import { fetchAdsetInsights, getMockAdsets } from './metaClient.js';
 import { checkThresholds, getATC, getPurchases, parseMetrics } from './thresholds.js';
 import { sendTelegramAlert, sendStartupMessage, sendErrorAlert } from './alerter.js';
@@ -70,8 +70,11 @@ ${alert.emoji} <b>${alert.rule.toUpperCase().replace(/_/g, ' ')}</b>
 📊 CTR: ${m.ctr.toFixed(2)}%
 🛒 Add to Carts: ${m.atc}
 💰 Purchases: ${m.purchases}
+💵 Revenue: €${(m.revenue || 0).toFixed(2)}
+📈 Net Profit: €${(m.net_profit || 0).toFixed(2)}
+🎯 ROAS: ${(m.roas || 0).toFixed(2)}x
 
-${alert.message}
+📝 ${alert.message}
   `.trim();
 };
 
@@ -128,8 +131,23 @@ const runCycle = async () => {
 
         logger.info(`Processing ${adsets.length} adset(s)`);
 
-        // 2. Fetch Shopify revenue (in parallel-ish timing)
-        const shopifyData = await fetchShopifyRevenue();
+        // 2. Fetch external dependencies (Shopify, Rules, Financials) in parallel-ish
+        const [shopifyData, activeRulesData, campaignSettingsData, overheadData] = await Promise.all([
+            fetchShopifyRevenue(),
+            DRY_RUN ? Promise.resolve([]) : getActiveAlertRules(),
+            DRY_RUN ? Promise.resolve([]) : getCampaignSettings(),
+            DRY_RUN ? Promise.resolve(null) : getBusinessOverhead()
+        ]);
+
+        const activeRules = activeRulesData || [];
+        const rawCampaignSettings = campaignSettingsData || [];
+        const businessOverhead = overheadData || null;
+
+        // Build campaign COGS map for fast lookups
+        const campaignCogsMap = {};
+        for (const cs of rawCampaignSettings) {
+            campaignCogsMap[cs.campaign_name] = parseFloat(cs.cogs || 0);
+        }
 
         let alertsFired = 0;
         let totalSpend = 0;
@@ -137,23 +155,34 @@ const runCycle = async () => {
         let totalImpressions = 0;
         let totalAtc = 0;
         let totalPurchases = 0;
+        let totalRevenue = 0;
+        let totalProfit = 0;
 
         for (const adset of adsets) {
+            const cogs = campaignCogsMap[adset.campaign_name] || 0;
+
             // 3. Parse metrics and save snapshot
-            const metrics = parseMetrics(adset);
+            const metrics = parseMetrics(adset, cogs, businessOverhead);
 
             totalSpend += metrics.spend;
             totalClicks += metrics.clicks;
             totalImpressions += metrics.impressions;
             totalAtc += metrics.atc;
             totalPurchases += metrics.purchases;
+            totalRevenue += metrics.revenue || 0;
+            totalProfit += metrics.net_profit || 0;
 
             if (!DRY_RUN) {
                 await saveSnapshot(adset, metrics);
             }
 
-            // 4. Check thresholds
-            const alerts = checkThresholds(adset);
+            // 4. Check thresholds using dynamic rules engine
+            // If dry run and no rules from DB, maybe provide some mock rules
+            const currentRules = activeRules.length > 0 ? activeRules : (DRY_RUN ? [
+                { name: 'mock_rule', emoji: '⚙️', severity: 'low', message_template: 'Mock alert run {spend}', conditions: [] }
+            ] : []);
+
+            const alerts = checkThresholds(adset, currentRules, cogs, businessOverhead);
 
             for (const alert of alerts) {
                 // 5. Deduplicate

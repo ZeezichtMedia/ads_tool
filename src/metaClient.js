@@ -67,6 +67,7 @@ export const fetchAdsetInsights = async () => {
         'inline_link_click_ctr',         // CTR for link clicks
         'unique_link_clicks_ctr',        // unique link click CTR
         'actions',                       // includes add_to_cart, purchase
+        'action_values',                 // conversion values (revenue) for purchases
         'cost_per_action_type',          // includes cost_per_purchase, etc.
     ].join(',');
 
@@ -158,6 +159,7 @@ export const fetchAdsetInsights = async () => {
                     all_clicks: a.clicks,
                     all_cpc: a.cpc,
                     actions: a.actions || [],
+                    action_values: a.action_values || [],
                     cost_per_action_type: a.cost_per_action_type || [],
                 };
             });

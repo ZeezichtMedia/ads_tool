@@ -223,6 +223,11 @@ export const upsertBusinessOverhead = async (overheadData) => {
     }
 };
 
+// ─── Alert Rules ──────────────────────────────────────
+export const getActiveAlertRules = async () => {
+    return supabaseGet('alert_rules', 'is_active=eq.true&order=created_at.desc');
+};
+
 // ─── Graceful Shutdown (no-op for REST) ──────────────────
 export const closeDb = async () => {
     logger.info('Supabase REST client — no pool to close');

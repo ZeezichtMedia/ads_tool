@@ -246,3 +246,47 @@ export async function upsertCampaignSettings(campaignName: string, cogs: number)
     throw new Error(`Supabase Upsert Error (${res.status}): ${text}`);
   }
 }
+
+// ─── Alert Rules ─────────────────────────────────────────
+
+export async function getAlertRules() {
+  return query('alert_rules', 'order=id.asc');
+}
+
+export async function upsertAlertRule(rule: any) {
+  // If id is provided, it updates. Otherwise inserts.
+  const url = `${SUPABASE_URL}/rest/v1/alert_rules?on_conflict=id`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation,resolution=merge-duplicates',
+    },
+    body: JSON.stringify(rule),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase Upsert Rule Error (${res.status}): ${text}`);
+  }
+
+  return res.json();
+}
+
+export async function deleteAlertRule(id: number) {
+  const url = `${SUPABASE_URL}/rest/v1/alert_rules?id=eq.${id}`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase Delete Rule Error (${res.status}): ${text}`);
+  }
+}
