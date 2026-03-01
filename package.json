@@ -1,0 +1,23 @@
+{
+  "name": "meta-alert-service",
+  "version": "1.0.0",
+  "description": "META Ads real-time alerting service — polls adset insights, fires Telegram alerts on spend thresholds",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "dry-run": "node src/index.js --dry-run",
+    "test": "node --test tests/thresholds.test.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.98.0",
+    "dotenv": "^16.4.7",
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.1",
+    "postgres": "^3.4.8"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

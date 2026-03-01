@@ -1,0 +1,43 @@
+---
+import Icon from "./Icon.astro";
+---
+
+<button
+    class="theme-toggle"
+    id="theme-toggle"
+    title="Toggle light/dark mode"
+    aria-label="Toggle theme"
+>
+    <span class="theme-icon theme-icon--dark">
+        <Icon name="sun" size={14} />
+    </span>
+    <span class="theme-icon theme-icon--light">
+        <Icon name="moon" size={14} />
+    </span>
+</button>
+
+<script>
+    function getTheme(): "light" | "dark" {
+        const stored = localStorage.getItem("theme");
+        if (stored === "light" || stored === "dark") return stored;
+        return "dark"; // default
+    }
+
+    function applyTheme(theme: "light" | "dark") {
+        document.documentElement.classList.toggle("light", theme === "light");
+        document.documentElement.classList.toggle("dark", theme === "dark");
+        localStorage.setItem("theme", theme);
+    }
+
+    // Apply on load
+    applyTheme(getTheme());
+
+    // Toggle button
+    const btn = document.getElementById("theme-toggle");
+    if (btn) {
+        btn.addEventListener("click", () => {
+            const current = getTheme();
+            applyTheme(current === "dark" ? "light" : "dark");
+        });
+    }
+</script>

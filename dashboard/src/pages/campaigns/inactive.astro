@@ -1,0 +1,24 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+import CampaignTable from "../../components/CampaignTable.astro";
+import { getLatestSnapshots } from "../../lib/db";
+
+const allAdsets = await getLatestSnapshots();
+
+// Filter to only non-ACTIVE adsets (PAUSED, CAMPAIGN_PAUSED, etc.)
+const adsets = allAdsets.filter((a: any) => a.effective_status !== "ACTIVE");
+---
+
+<Layout title="Inactive Campaigns">
+    <Sidebar />
+    <div class="main-content">
+        <div class="page-header">
+            <h2 class="page-title">Inactive Campaigns</h2>
+            <span class="page-subtitle"
+                >{adsets.length} paused / inactive adsets</span
+            >
+        </div>
+        <CampaignTable adsets={adsets} />
+    </div>
+</Layout>

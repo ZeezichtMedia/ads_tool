@@ -1,0 +1,289 @@
+---
+import Icon from "./Icon.astro";
+import {
+    classifyPerformance,
+    getPerformanceClass,
+    getDeliveryLabel,
+    getDeliveryClass,
+    fmtCurrency,
+    fmtNumber,
+    ESTIMATED_AOV,
+} from "../utils/classify";
+
+interface Props {
+    adsets: any[];
+}
+
+const { adsets } = Astro.props;
+
+// ─── Aggregate adsets into campaigns ─────────────────────
+type CampaignRow = {
+    name: string;
+    adsetCount: number;
+    hasActive: boolean;
+    deliveryStatus: string;
+    spend: number;
+    cpc: number;
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    atc: number;
+    purchases: number;
+    revenue: number;
+    roas: number;
+    performance: string;
+};
+
+const campaignMap = new Map<string, any[]>();
+for (const a of adsets) {
+    const name = a.campaign_name || "Unknown Campaign";
+    if (!campaignMap.has(name)) campaignMap.set(name, []);
+    campaignMap.get(name)!.push(a);
+}
+
+const campaigns: CampaignRow[] = [...campaignMap.entries()]
+    .map(([name, ads]) => {
+        const spend = ads.reduce((s, a) => s + (parseFloat(a.spend) || 0), 0);
+        const clicks = ads.reduce((s, a) => s + (parseInt(a.clicks) || 0), 0);
+        const impressions = ads.reduce(
+            (s, a) => s + (parseInt(a.impressions) || 0),
+            0,
+        );
+        const atc = ads.reduce(
+            (s, a) => s + (parseInt(a.add_to_carts) || 0),
+            0,
+        );
+        const purchases = ads.reduce(
+            (s, a) => s + (parseInt(a.purchases) || 0),
+            0,
+        );
+        const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+        const cpc = clicks > 0 ? spend / clicks : 0;
+        // Per-campaign revenue is estimated until UTM matching connects Shopify orders to campaigns
+        // The aggregate ROAS in InfoBanner uses real Shopify data
+        const revenue = purchases * ESTIMATED_AOV;
+        const roas = spend > 0 && revenue > 0 ? revenue / spend : 0;
+        const hasActive = ads.some((a) => a.effective_status === "ACTIVE");
+
+        // Performance: use aggregated values
+        const performance = classifyPerformance({
+            spend,
+            cpc,
+            ctr,
+            add_to_carts: atc,
+            purchases,
+            impressions,
+            clicks,
+        });
+
+        return {
+            name,
+            adsetCount: ads.length,
+            hasActive,
+            deliveryStatus: hasActive
+                ? "ACTIVE"
+                : ads[0]?.effective_status || "UNKNOWN",
+            spend,
+            cpc,
+            clicks,
+            impressions,
+            ctr,
+            atc,
+            purchases,
+            revenue,
+            roas,
+            performance,
+        };
+    })
+    .sort((a, b) => b.spend - a.spend);
+
+// ─── Helpers ─────────────────────────────────────────────
+function getCpcClass(cpc: number, spend: number): string {
+    if (spend < 3) return "";
+    if (cpc > 1.75) return "metric-danger";
+    if (cpc > 1.2) return "metric-warning";
+    return "metric-good";
+}
+
+function getRoasClass(roas: number): string {
+    if (roas >= 2.5) return "metric-good font-bold";
+    if (roas >= 1) return "metric-warning";
+    return "metric-danger";
+}
+---
+
+<div id="campaign-container">
+    {
+        campaigns.length === 0 ? (
+            <div class="empty-state">
+                <Icon name="calendar" size={48} class="text-muted" />
+                <p class="empty-title">No data for this period</p>
+                <p class="empty-subtitle">
+                    There are no campaign snapshots for the selected date range.
+                    Try selecting a different period or wait for the service to
+                    collect data.
+                </p>
+            </div>
+        ) : (
+            <table class="campaign-table">
+                <thead>
+                    <tr>
+                        <th style="min-width: 260px;">Campaign</th>
+                        <th>Delivery</th>
+                        <th>Performance</th>
+                        <th class="text-right">Spent</th>
+                        <th class="text-right">CPC</th>
+                        <th class="text-right">Clicks</th>
+                        <th class="text-right">Impr.</th>
+                        <th class="text-right">CTR</th>
+                        <th class="text-right">ATCs</th>
+                        <th class="text-right">Purch.</th>
+                        <th class="text-right">ROAS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {campaigns.map((c) => (
+                        <tr
+                            data-campaign={c.name.toLowerCase()}
+                            data-status={c.performance}
+                        >
+                            <td>
+                                <div class="campaign-cell">
+                                    <Icon
+                                        name="folder"
+                                        size={15}
+                                        class="campaign-folder-icon"
+                                    />
+                                    <div class="campaign-cell-content">
+                                        <span class="campaign-cell-name">
+                                            {c.name}
+                                        </span>
+                                        <span class="campaign-cell-meta">
+                                            {c.adsetCount} adset
+                                            {c.adsetCount > 1 ? "s" : ""}
+                                        </span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span
+                                    class={`delivery-badge ${c.hasActive ? "delivery-active" : "delivery-paused"}`}
+                                >
+                                    <span class="delivery-dot" />
+                                    {c.hasActive
+                                        ? "Active"
+                                        : getDeliveryLabel(c.deliveryStatus)}
+                                </span>
+                            </td>
+                            <td>
+                                <span
+                                    class={`perf-badge ${getPerformanceClass(c.performance)}`}
+                                >
+                                    {c.performance}
+                                </span>
+                            </td>
+                            <td
+                                class="metric"
+                                style="font-weight: 600; color: var(--text-primary);"
+                            >
+                                €{c.spend.toFixed(2)}
+                            </td>
+                            <td class={`metric ${getCpcClass(c.cpc, c.spend)}`}>
+                                {c.cpc > 0 ? `€${c.cpc.toFixed(2)}` : "—"}
+                            </td>
+                            <td class="metric">{fmtNumber(c.clicks)}</td>
+                            <td class="metric">{fmtNumber(c.impressions)}</td>
+                            <td class="metric">
+                                {c.ctr > 0 ? `${c.ctr.toFixed(2)}%` : "—"}
+                            </td>
+                            <td
+                                class={`metric ${c.atc === 0 && c.spend >= 10 ? "metric-danger" : c.atc > 0 ? "metric-good" : ""}`}
+                            >
+                                {c.atc}
+                            </td>
+                            <td
+                                class={`metric ${c.purchases > 0 ? "metric-good" : c.spend >= 30 ? "metric-danger" : ""}`}
+                            >
+                                {c.purchases}
+                            </td>
+                            <td
+                                class={`metric ${c.roas > 0 ? getRoasClass(c.roas) : ""}`}
+                            >
+                                {c.roas > 0 ? `${c.roas.toFixed(2)}x` : "—"}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        )
+    }
+</div>
+
+<script>
+    // ─── Client-side search ──────────────────────────────
+    const searchInput = document.getElementById(
+        "campaign-search",
+    ) as HTMLInputElement;
+    if (searchInput) {
+        searchInput.addEventListener("input", (e) => {
+            const query = (e.target as HTMLInputElement).value.toLowerCase();
+            document
+                .querySelectorAll(".campaign-table tbody tr")
+                .forEach((row) => {
+                    const name = (row as HTMLElement).dataset.campaign || "";
+                    (row as HTMLElement).style.display = name.includes(query)
+                        ? ""
+                        : "none";
+                });
+            updateCount();
+        });
+    }
+
+    // ─── Status filter pills ─────────────────────────────
+    let activeFilter: string | null = null;
+    document.querySelectorAll(".filter-pill").forEach((pill) => {
+        pill.addEventListener("click", (e) => {
+            const btn = e.currentTarget as HTMLElement;
+            const status = btn.dataset.status;
+
+            if (status === "all" || activeFilter === status) {
+                activeFilter = null;
+                document
+                    .querySelectorAll(".filter-pill")
+                    .forEach((p) => p.classList.remove("active"));
+                document
+                    .querySelector('.filter-pill[data-status="all"]')
+                    ?.classList.add("active");
+            } else {
+                activeFilter = status || null;
+                document
+                    .querySelectorAll(".filter-pill")
+                    .forEach((p) => p.classList.remove("active"));
+                btn.classList.add("active");
+            }
+
+            document
+                .querySelectorAll(".campaign-table tbody tr")
+                .forEach((row) => {
+                    const rowStatus = (row as HTMLElement).dataset.status;
+                    (row as HTMLElement).style.display =
+                        !activeFilter || rowStatus === activeFilter
+                            ? ""
+                            : "none";
+                });
+            updateCount();
+        });
+    });
+
+    function updateCount() {
+        const countEl = document.getElementById("visible-count");
+        if (countEl) {
+            const visible = document.querySelectorAll(
+                ".campaign-table tbody tr:not([style*='display: none'])",
+            ).length;
+            countEl.textContent = `${visible}`;
+        }
+    }
+
+    // Auto-refresh is handled by FilterBar.astro
+</script>

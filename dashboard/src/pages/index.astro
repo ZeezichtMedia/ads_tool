@@ -1,0 +1,113 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Sidebar from "../components/Sidebar.astro";
+import InfoBanner from "../components/InfoBanner.astro";
+import FilterBar from "../components/FilterBar.astro";
+import DateRangePicker from "../components/DateRangePicker.astro";
+import CampaignTable from "../components/CampaignTable.astro";
+import Icon from "../components/Icon.astro";
+import {
+  getSnapshotsForRange,
+  getStatsForRange,
+  resolveRange,
+} from "../lib/db";
+import {
+  classifyPerformance,
+  STATUS_ORDER,
+  STATUS_COLORS,
+} from "../utils/classify";
+
+// ─── Read URL params for date range ─────────────────────
+const url = new URL(Astro.request.url);
+const rangeKey = url.searchParams.get("range") || "today";
+const customFrom = url.searchParams.get("from") || "";
+const customTo = url.searchParams.get("to") || "";
+
+const range = resolveRange(rangeKey, customFrom, customTo);
+
+let adsets: any[] = [];
+let stats: any = {
+  alertsToday: 0,
+  activeAdsets: 0,
+  totalSpend: 0,
+  totalAtc: 0,
+  totalPurchases: 0,
+  shopifyRevenue: 0,
+  shopifyOrderCount: 0,
+  roas: 0,
+  hasShopifyData: false,
+};
+let dbError = false;
+
+try {
+  [adsets, stats] = await Promise.all([
+    getSnapshotsForRange(range),
+    getStatsForRange(range),
+  ]);
+} catch (err) {
+  console.error("Failed to load dashboard data:", err);
+  dbError = true;
+}
+
+// Count per status for filter pills
+const statusMap = new Map<string, number>();
+for (const a of adsets) {
+  const s = classifyPerformance(a);
+  statusMap.set(s, (statusMap.get(s) || 0) + 1);
+}
+
+const statusCounts = STATUS_ORDER.filter((s) => statusMap.has(s)).map((s) => ({
+  status: s,
+  count: statusMap.get(s) || 0,
+  ...STATUS_COLORS[s],
+}));
+---
+
+<Layout title="Campaigns">
+  <Sidebar />
+
+  <div class="main-content">
+    {
+      dbError ? (
+        <div class="error-container">
+          <div class="error-card">
+            <Icon name="wifi-off" size={48} class="text-danger" />
+            <h3 class="error-title">Database Connection Error</h3>
+            <p class="error-text">
+              Cannot connect to Supabase. Check your SUPABASE_URL and
+              SUPABASE_ANON_KEY.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <DateRangePicker
+            currentRange={rangeKey}
+            customFrom={customFrom}
+            customTo={customTo}
+          />
+
+          <InfoBanner
+            totalSpend={stats.totalSpend}
+            totalRevenue={stats.shopifyRevenue}
+            roas={stats.roas}
+            matchedCount={adsets.length}
+            totalCount={adsets.length}
+            alertsToday={stats.alertsToday}
+            totalAtc={stats.totalAtc}
+            totalPurchases={stats.totalPurchases}
+            shopifyOrders={stats.shopifyOrderCount}
+            hasShopifyData={stats.hasShopifyData}
+          />
+
+          <FilterBar
+            statusCounts={statusCounts}
+            totalCampaigns={adsets.length}
+          />
+
+          <CampaignTable adsets={adsets} />
+        </>
+      )
+    }
+  </div>
+</Layout>

@@ -1,0 +1,85 @@
+---
+import Icon from "./Icon.astro";
+
+interface Props {
+    currentRange: string;
+    customFrom?: string;
+    customTo?: string;
+}
+
+const { currentRange = "today", customFrom = "", customTo = "" } = Astro.props;
+
+const ranges = [
+    { key: "today", label: "Today" },
+    { key: "yesterday", label: "Yesterday" },
+    { key: "7d", label: "Last 7 Days" },
+    { key: "30d", label: "Last 30 Days" },
+    { key: "custom", label: "Custom" },
+];
+---
+
+<div class="date-range-picker">
+    <div class="range-buttons">
+        {
+            ranges.map((r) => (
+                <a
+                    href={r.key === "custom" ? "#" : `?range=${r.key}`}
+                    class={`range-btn ${currentRange === r.key ? "active" : ""}`}
+                    data-range={r.key}
+                >
+                    {r.label}
+                </a>
+            ))
+        }
+    </div>
+
+    <div
+        class="custom-range-inputs"
+        id="custom-range-inputs"
+        style={currentRange === "custom" ? "" : "display: none;"}
+    >
+        <input
+            type="date"
+            id="custom-from"
+            class="date-input"
+            value={customFrom}
+        />
+        <span class="date-separator">–</span>
+        <input type="date" id="custom-to" class="date-input" value={customTo} />
+        <button class="range-apply-btn" id="apply-custom-range">
+            <Icon name="check" size={14} />
+            Apply
+        </button>
+    </div>
+</div>
+
+<script>
+    // Show/hide custom inputs
+    const customBtn = document.querySelector<HTMLAnchorElement>(
+        '[data-range="custom"]',
+    );
+    const customInputs = document.getElementById("custom-range-inputs");
+    const applyBtn = document.getElementById("apply-custom-range");
+
+    if (customBtn && customInputs) {
+        customBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            customInputs.style.display =
+                customInputs.style.display === "none" ? "flex" : "none";
+        });
+    }
+
+    if (applyBtn) {
+        applyBtn.addEventListener("click", () => {
+            const from = (
+                document.getElementById("custom-from") as HTMLInputElement
+            )?.value;
+            const to = (
+                document.getElementById("custom-to") as HTMLInputElement
+            )?.value;
+            if (from && to) {
+                window.location.href = `?range=custom&from=${from}&to=${to}`;
+            }
+        });
+    }
+</script>

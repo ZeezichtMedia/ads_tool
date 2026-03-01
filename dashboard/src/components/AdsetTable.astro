@@ -1,0 +1,160 @@
+---
+interface Adset {
+    adset_id: string;
+    adset_name: string;
+    campaign_name: string;
+    spend: number;
+    cpc: number;
+    cpm: number;
+    impressions: number;
+    clicks: number;
+    ctr: number;
+    add_to_carts: number;
+    purchases: number;
+    cost_per_atc: number | null;
+    cost_per_purchase: number | null;
+    captured_at: string;
+}
+
+interface Props {
+    adsets: Adset[];
+}
+
+const { adsets } = Astro.props;
+
+function getSeverityClass(adset: Adset): string {
+    const spend = parseFloat(String(adset.spend));
+    const atc = parseInt(String(adset.add_to_carts));
+    const purchases = parseInt(String(adset.purchases));
+    const cpc = parseFloat(String(adset.cpc));
+
+    if (spend >= 30 && atc === 0) return "severity-critical";
+    if (spend >= 50 && purchases === 0) return "severity-critical";
+    if (spend >= 10 && atc === 0) return "severity-high";
+    if (cpc > 1.75 && spend >= 5) return "severity-medium";
+    return "severity-good";
+}
+
+function formatCurrency(value: number | null | undefined): string {
+    if (value === null || value === undefined) return "—";
+    return `€${parseFloat(String(value)).toFixed(2)}`;
+}
+
+function formatNumber(value: number | null | undefined): string {
+    if (value === null || value === undefined) return "—";
+    return parseInt(String(value)).toLocaleString();
+}
+
+function formatPercent(value: number | null | undefined): string {
+    if (value === null || value === undefined) return "—";
+    return `${parseFloat(String(value)).toFixed(2)}%`;
+}
+
+function timeAgo(dateStr: string): string {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    return `${hrs}h ${mins % 60}m ago`;
+}
+---
+
+<div
+    class="overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-card)]"
+>
+    {
+        adsets.length === 0 ? (
+            <div class="flex flex-col items-center justify-center py-16 text-[var(--color-text-muted)]">
+                <span class="text-4xl mb-3">📭</span>
+                <p class="text-lg font-medium">No active adsets</p>
+                <p class="text-sm mt-1">
+                    Waiting for data from the next poll cycle...
+                </p>
+            </div>
+        ) : (
+            <table class="data-table w-full">
+                <thead>
+                    <tr>
+                        <th>Campaign / Adset</th>
+                        <th class="text-right">Spend</th>
+                        <th class="text-right">CPC</th>
+                        <th class="text-right">CTR</th>
+                        <th class="text-right">Impressions</th>
+                        <th class="text-right">Clicks</th>
+                        <th class="text-right">ATC</th>
+                        <th class="text-right">Purchases</th>
+                        <th class="text-right">Cost/ATC</th>
+                        <th class="text-right">Cost/Purchase</th>
+                        <th class="text-right">Updated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {adsets.map((adset) => (
+                        <tr class={getSeverityClass(adset)}>
+                            <td>
+                                <div>
+                                    <p class="text-sm font-medium text-[var(--color-text-primary)]">
+                                        {adset.adset_name}
+                                    </p>
+                                    <p class="text-xs text-[var(--color-text-muted)] mt-0.5">
+                                        {adset.campaign_name}
+                                    </p>
+                                </div>
+                            </td>
+                            <td class="text-right font-mono text-sm font-semibold">
+                                {formatCurrency(adset.spend)}
+                            </td>
+                            <td class="text-right font-mono text-sm">
+                                {formatCurrency(adset.cpc)}
+                            </td>
+                            <td class="text-right font-mono text-sm">
+                                {formatPercent(adset.ctr)}
+                            </td>
+                            <td class="text-right font-mono text-sm">
+                                {formatNumber(adset.impressions)}
+                            </td>
+                            <td class="text-right font-mono text-sm">
+                                {formatNumber(adset.clicks)}
+                            </td>
+                            <td
+                                class:list={[
+                                    "text-right font-mono text-sm font-semibold",
+                                    parseInt(String(adset.add_to_carts)) ===
+                                        0 &&
+                                    parseFloat(String(adset.spend)) >= 10
+                                        ? "text-red-400"
+                                        : "text-green-400",
+                                ]}
+                            >
+                                {formatNumber(adset.add_to_carts)}
+                            </td>
+                            <td
+                                class:list={[
+                                    "text-right font-mono text-sm font-semibold",
+                                    parseInt(String(adset.purchases)) === 0 &&
+                                    parseFloat(String(adset.spend)) >= 50
+                                        ? "text-red-400"
+                                        : parseInt(String(adset.purchases)) > 0
+                                          ? "text-green-400"
+                                          : "",
+                                ]}
+                            >
+                                {formatNumber(adset.purchases)}
+                            </td>
+                            <td class="text-right font-mono text-sm">
+                                {formatCurrency(adset.cost_per_atc)}
+                            </td>
+                            <td class="text-right font-mono text-sm">
+                                {formatCurrency(adset.cost_per_purchase)}
+                            </td>
+                            <td class="text-right text-xs text-[var(--color-text-muted)]">
+                                {timeAgo(adset.captured_at)}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        )
+    }
+</div>

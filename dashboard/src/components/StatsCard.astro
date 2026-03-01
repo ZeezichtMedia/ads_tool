@@ -1,0 +1,64 @@
+---
+interface Props {
+    label: string;
+    value: string | number;
+    icon: string;
+    trend?: "up" | "down" | "neutral";
+    color?: "default" | "success" | "warning" | "danger";
+}
+
+const {
+    label,
+    value,
+    icon,
+    trend = "neutral",
+    color = "default",
+} = Astro.props;
+
+const colorClasses: Record<string, string> = {
+    default: "from-indigo-500/10 to-transparent border-indigo-500/20",
+    success: "from-green-500/10 to-transparent border-green-500/20",
+    warning: "from-amber-500/10 to-transparent border-amber-500/20",
+    danger: "from-red-500/10 to-transparent border-red-500/20",
+};
+
+const valueColorClasses: Record<string, string> = {
+    default: "text-indigo-400",
+    success: "text-green-400",
+    warning: "text-amber-400",
+    danger: "text-red-400",
+};
+---
+
+<div
+    class:list={[
+        "relative overflow-hidden rounded-xl border bg-gradient-to-br p-5 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg",
+        colorClasses[color],
+    ]}
+>
+    <!-- Icon Background -->
+    <div class="absolute -right-2 -top-2 text-5xl opacity-10">{icon}</div>
+
+    <div class="relative z-10">
+        <p class="text-sm font-medium text-[var(--color-text-secondary)]">
+            {label}
+        </p>
+        <p class:list={["mt-2 text-3xl font-bold", valueColorClasses[color]]}>
+            {value}
+        </p>
+        {
+            trend !== "neutral" && (
+                <div class="mt-2 flex items-center gap-1">
+                    <span
+                        class:list={[
+                            "text-xs font-medium",
+                            trend === "up" ? "text-green-400" : "text-red-400",
+                        ]}
+                    >
+                        {trend === "up" ? "▲" : "▼"} Today
+                    </span>
+                </div>
+            )
+        }
+    </div>
+</div>

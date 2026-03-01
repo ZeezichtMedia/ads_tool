@@ -1,0 +1,84 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Sidebar from "../components/Sidebar.astro";
+import Icon from "../components/Icon.astro";
+import { getAlertHistory } from "../lib/db";
+
+let alerts: any[] = [];
+let dbError = false;
+
+try {
+    alerts = await getAlertHistory(100);
+} catch (err) {
+    console.error("Failed to load alerts:", err);
+    dbError = true;
+}
+---
+
+<Layout title="Alert History">
+    <Sidebar />
+    <div class="main-content">
+        <div class="page-header">
+            <h2 class="page-title">Alert History</h2>
+            <span class="page-subtitle">{alerts.length} alerts logged</span>
+        </div>
+
+        <div class="alert-list">
+            {
+                alerts.length === 0 ? (
+                    <div class="empty-state">
+                        <Icon name="bell" size={48} class="text-muted" />
+                        <p class="empty-title">No alerts yet</p>
+                        <p class="empty-subtitle">
+                            Alerts will appear here when thresholds are
+                            triggered.
+                        </p>
+                    </div>
+                ) : (
+                    <table class="campaign-table">
+                        <thead>
+                            <tr>
+                                <th>Alert ID</th>
+                                <th>Adset</th>
+                                <th>Campaign</th>
+                                <th>Rule</th>
+                                <th>Message</th>
+                                <th class="text-right">Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {alerts.map((alert: any) => (
+                                <tr>
+                                    <td class="metric">{alert.id}</td>
+                                    <td>
+                                        <span class="adset-name">
+                                            {alert.adset_name || "—"}
+                                        </span>
+                                    </td>
+                                    <td>{alert.campaign_name || "—"}</td>
+                                    <td>
+                                        <span class="perf-badge perf-wall">
+                                            {alert.rule || "—"}
+                                        </span>
+                                    </td>
+                                    <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis;">
+                                        {alert.message || "—"}
+                                    </td>
+                                    <td class="metric">
+                                        {alert.alerted_at
+                                            ? new Date(
+                                                  alert.alerted_at,
+                                              ).toLocaleString("nl-NL", {
+                                                  timeZone: "Europe/Amsterdam",
+                                              })
+                                            : "—"}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )
+            }
+        </div>
+    </div>
+</Layout>

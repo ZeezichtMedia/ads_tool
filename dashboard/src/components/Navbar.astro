@@ -1,0 +1,66 @@
+---
+const currentPath = Astro.url.pathname;
+
+const navItems = [
+    { href: "/", label: "Live Overview", icon: "📊" },
+    { href: "/alerts", label: "Alert History", icon: "🔔" },
+];
+---
+
+<nav
+    class="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]/95 backdrop-blur-sm"
+>
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="flex h-16 items-center justify-between">
+            <!-- Logo -->
+            <div class="flex items-center gap-3">
+                <div
+                    class="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--color-accent)]"
+                >
+                    <span class="text-lg">⚡</span>
+                </div>
+                <div>
+                    <h1
+                        class="text-lg font-bold text-[var(--color-text-primary)]"
+                    >
+                        META Alerts
+                    </h1>
+                    <p class="text-xs text-[var(--color-text-muted)]">
+                        Real-time monitoring
+                    </p>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="flex items-center gap-1">
+                {
+                    navItems.map((item) => (
+                        <a
+                            href={item.href}
+                            class:list={[
+                                "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200",
+                                currentPath === item.href
+                                    ? "bg-[var(--color-accent)] text-white shadow-lg shadow-indigo-500/20"
+                                    : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-card-hover)] hover:text-[var(--color-text-primary)]",
+                            ]}
+                        >
+                            <span>{item.icon}</span>
+                            <span>{item.label}</span>
+                        </a>
+                    ))
+                }
+            </div>
+
+            <!-- Status Indicator -->
+            <div class="flex items-center gap-2">
+                <div
+                    class="h-2 w-2 rounded-full bg-[var(--color-success)] animate-pulse-glow"
+                >
+                </div>
+                <span class="text-xs text-[var(--color-text-muted)]"
+                    >Polling active</span
+                >
+            </div>
+        </div>
+    </div>
+</nav>

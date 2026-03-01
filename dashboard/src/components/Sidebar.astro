@@ -1,0 +1,109 @@
+---
+import Icon from "./Icon.astro";
+import ThemeToggle from "./ThemeToggle.astro";
+
+const currentPath = Astro.url.pathname;
+
+const mainNav = [{ href: "/", icon: "layout-dashboard", label: "Dashboard" }];
+
+const adNav = {
+    items: [
+        { href: "/", label: "Overview", icon: "bar-chart-3" },
+        { href: "/campaigns/active", label: "Active Campaigns", icon: "play" },
+        { href: "/campaigns/inactive", label: "Inactive", icon: "pause" },
+    ],
+};
+
+const toolsNav = [{ href: "/alerts", icon: "bell", label: "Alert History" }];
+
+function isActive(href: string): boolean {
+    if (href === "/") return currentPath === "/";
+    return currentPath.startsWith(href);
+}
+---
+
+<aside class="sidebar">
+    <!-- Brand -->
+    <div class="sidebar-brand">
+        <div class="brand-icon">
+            <Icon name="zap" size={16} color="white" />
+        </div>
+        <span class="brand-name">META Alerts</span>
+    </div>
+
+    <!-- Main Nav -->
+    <div class="sidebar-nav-group">
+        {
+            mainNav.map((item) => (
+                <a
+                    href={item.href}
+                    class:list={[
+                        "sidebar-link",
+                        { active: isActive(item.href) },
+                    ]}
+                >
+                    <Icon name={item.icon} size={16} />
+                    <span>{item.label}</span>
+                </a>
+            ))
+        }
+    </div>
+
+    <!-- Advertisements Section -->
+    <div class="sidebar-nav-group">
+        <div class="sidebar-section">
+            <Icon name="megaphone" size={12} />
+            <span>Advertisements</span>
+        </div>
+        {
+            adNav.items.map((item) => (
+                <a
+                    href={item.href}
+                    class:list={[
+                        "sidebar-sub-link",
+                        { active: isActive(item.href) },
+                    ]}
+                >
+                    <Icon name={item.icon} size={14} />
+                    <span>{item.label}</span>
+                </a>
+            ))
+        }
+    </div>
+
+    <!-- Divider -->
+    <div class="sidebar-divider"></div>
+
+    <!-- Tools Section -->
+    <div class="sidebar-nav-group">
+        <div class="sidebar-section">
+            <Icon name="wrench" size={12} />
+            <span>Monitoring</span>
+        </div>
+        {
+            toolsNav.map((item) => (
+                <a
+                    href={item.href}
+                    class:list={[
+                        "sidebar-link",
+                        { active: isActive(item.href) },
+                    ]}
+                >
+                    <Icon name={item.icon} size={16} />
+                    <span>{item.label}</span>
+                </a>
+            ))
+        }
+    </div>
+
+    <!-- Footer -->
+    <div class="sidebar-footer">
+        <div class="sidebar-footer-row">
+            <div class="sidebar-status">
+                <div class="status-dot status-dot--live"></div>
+                <span>Service active</span>
+            </div>
+            <ThemeToggle />
+        </div>
+    </div>
+</aside>

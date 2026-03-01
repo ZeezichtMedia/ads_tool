@@ -1,0 +1,49 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+import InfoBanner from "../../components/InfoBanner.astro";
+import CampaignTable from "../../components/CampaignTable.astro";
+import { getLatestSnapshots, getTodayStats } from "../../lib/db";
+
+const [allAdsets, stats] = await Promise.all([
+    getLatestSnapshots(),
+    getTodayStats(),
+]);
+
+// Filter to only ACTIVE adsets
+const adsets = allAdsets.filter((a: any) => a.effective_status === "ACTIVE");
+const activeSpend = adsets.reduce(
+    (sum: number, a: any) => sum + (parseFloat(a.spend) || 0),
+    0,
+);
+const activeAtc = adsets.reduce(
+    (sum: number, a: any) => sum + (parseInt(a.add_to_carts) || 0),
+    0,
+);
+const activePurchases = adsets.reduce(
+    (sum: number, a: any) => sum + (parseInt(a.purchases) || 0),
+    0,
+);
+---
+
+<Layout title="Active Campaigns">
+    <Sidebar />
+    <div class="main-content">
+        <InfoBanner
+            totalSpend={activeSpend}
+            totalRevenue={stats.shopifyRevenue}
+            roas={stats.roas}
+            matchedCount={adsets.length}
+            totalCount={allAdsets.length}
+            totalAtc={activeAtc}
+            totalPurchases={activePurchases}
+            shopifyOrders={stats.shopifyOrderCount}
+            hasShopifyData={stats.hasShopifyData}
+        />
+        <div class="page-header">
+            <h2 class="page-title">Active Campaigns</h2>
+            <span class="page-subtitle">{adsets.length} active adsets</span>
+        </div>
+        <CampaignTable adsets={adsets} />
+    </div>
+</Layout>

@@ -1,0 +1,177 @@
+---
+import Icon from "./Icon.astro";
+
+interface StatusCount {
+    status: string;
+    count: number;
+    color: string;
+    bgColor: string;
+}
+
+interface Props {
+    statusCounts: StatusCount[];
+    totalCampaigns: number;
+}
+
+const { statusCounts, totalCampaigns } = Astro.props;
+
+const now = new Date().toLocaleTimeString("nl-NL", {
+    timeZone: "Europe/Amsterdam",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+});
+---
+
+<div class="filter-bar">
+    <!-- Search -->
+    <div class="search-wrapper">
+        <span class="search-icon-wrap">
+            <Icon name="search" size={14} />
+        </span>
+        <input
+            type="text"
+            placeholder="Search campaigns..."
+            class="search-input"
+            id="campaign-search"
+        />
+    </div>
+
+    <!-- Separator -->
+    <div class="filter-separator"></div>
+
+    <!-- "All" pill -->
+    <button class="filter-pill filter-pill--all active" data-status="all">
+        <span class="pill-count" id="visible-count">{totalCampaigns}</span>
+        <span>All</span>
+    </button>
+
+    <!-- Status Filter Pills -->
+    {
+        statusCounts.map((s) => (
+            <button
+                class="filter-pill"
+                style={`--pill-color: ${s.color}; --pill-bg: ${s.bgColor};`}
+                data-status={s.status}
+            >
+                <span class="pill-count">{s.count}</span>
+                <span>{s.status}</span>
+            </button>
+        ))
+    }
+
+    <!-- Spacer -->
+    <div style="flex: 1;"></div>
+
+    <!-- Live indicator + countdown -->
+    <div class="live-indicator" id="live-indicator">
+        <div class="live-dot"></div>
+        <span>Next refresh <strong id="refresh-timer">5:00</strong></span>
+    </div>
+
+    <!-- Last updated -->
+    <div class="last-updated-badge">
+        <Icon name="clock" size={12} class="text-muted" />
+        <span>{now}</span>
+    </div>
+
+    <!-- Refresh button -->
+    <button class="icon-btn" title="Refresh Now" id="refresh-btn">
+        <Icon name="refresh-cw" size={14} />
+    </button>
+</div>
+
+<script>
+    // ─── Auto-refresh: reload page every 5 minutes ──────
+    const INTERVAL_SECONDS = 5 * 60; // 5 minutes
+    let remaining = INTERVAL_SECONDS;
+
+    const timerEl = document.getElementById("refresh-timer");
+    const refreshBtn = document.getElementById("refresh-btn");
+
+    function updateTimer() {
+        if (!timerEl) return;
+        const m = Math.floor(remaining / 60);
+        const s = remaining % 60;
+        timerEl.textContent = `${m}:${s.toString().padStart(2, "0")}`;
+    }
+
+    function tick() {
+        remaining--;
+        if (remaining <= 0) {
+            // Auto-reload the page
+            window.location.reload();
+            return;
+        }
+        updateTimer();
+    }
+
+    // Start countdown
+    updateTimer();
+    const intervalId = setInterval(tick, 1000);
+
+    // Manual refresh button
+    if (refreshBtn) {
+        refreshBtn.addEventListener("click", () => {
+            // Show spinning animation
+            const icon = refreshBtn.querySelector("svg");
+            if (icon) icon.style.animation = "spin 0.5s linear";
+            window.location.reload();
+        });
+    }
+
+    // Search filter (client-side row filtering)
+    const searchInput = document.getElementById(
+        "campaign-search",
+    ) as HTMLInputElement;
+    if (searchInput) {
+        searchInput.addEventListener("input", () => {
+            const q = searchInput.value.toLowerCase().trim();
+            const rows = document.querySelectorAll<HTMLElement>(
+                ".campaign-table tbody tr",
+            );
+            let visible = 0;
+
+            rows.forEach((row) => {
+                const text = row.textContent?.toLowerCase() || "";
+                const show = !q || text.includes(q);
+                row.style.display = show ? "" : "none";
+                if (show) visible++;
+            });
+
+            const countEl = document.getElementById("visible-count");
+            if (countEl) countEl.textContent = String(visible);
+        });
+    }
+
+    // Filter pill click handler
+    const pills = document.querySelectorAll<HTMLElement>(".filter-pill");
+    pills.forEach((pill) => {
+        pill.addEventListener("click", () => {
+            pills.forEach((p) => p.classList.remove("active"));
+            pill.classList.add("active");
+
+            const status = pill.dataset.status || "all";
+            const rows = document.querySelectorAll<HTMLElement>(
+                ".campaign-table tbody tr",
+            );
+            let visible = 0;
+
+            rows.forEach((row) => {
+                if (status === "all") {
+                    row.style.display = "";
+                    visible++;
+                } else {
+                    const badge = row.querySelector("[data-performance]");
+                    const perf = badge?.getAttribute("data-performance") || "";
+                    const show = perf === status;
+                    row.style.display = show ? "" : "none";
+                    if (show) visible++;
+                }
+            });
+
+            const countEl = document.getElementById("visible-count");
+            if (countEl) countEl.textContent = String(visible);
+        });
+    });
+</script>

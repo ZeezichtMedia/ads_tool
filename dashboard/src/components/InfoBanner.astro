@@ -1,0 +1,129 @@
+---
+import Icon from "./Icon.astro";
+
+interface Props {
+    totalSpend: number;
+    totalRevenue: number;
+    roas: number;
+    matchedCount: number;
+    totalCount: number;
+    alertsToday?: number;
+    totalAtc?: number;
+    totalPurchases?: number;
+    shopifyOrders?: number;
+    hasShopifyData?: boolean;
+}
+
+const {
+    totalSpend,
+    totalRevenue,
+    roas,
+    matchedCount,
+    totalCount,
+    alertsToday = 0,
+    totalAtc = 0,
+    totalPurchases = 0,
+    shopifyOrders = 0,
+    hasShopifyData = false,
+} = Astro.props;
+---
+
+<div class="stats-bar">
+    <div class="stat-item">
+        <div class="stat-icon stat-icon--spend">
+            <Icon name="euro" size={18} />
+        </div>
+        <div class="stat-content">
+            <span class="stat-value">€{totalSpend.toFixed(2)}</span>
+            <span class="stat-label">META Spend</span>
+        </div>
+    </div>
+
+    <div class="stat-divider"></div>
+
+    <div class="stat-item">
+        <div class="stat-icon stat-icon--atc">
+            <Icon name="shopping-cart" size={18} />
+        </div>
+        <div class="stat-content">
+            <span class="stat-value">{totalAtc}</span>
+            <span class="stat-label">Add to Carts</span>
+        </div>
+    </div>
+
+    <div class="stat-divider"></div>
+
+    <div class="stat-item">
+        <div class="stat-icon stat-icon--purchases">
+            <Icon name="credit-card" size={18} />
+        </div>
+        <div class="stat-content">
+            <span class="stat-value">{totalPurchases}</span>
+            <span class="stat-label">Purchases</span>
+        </div>
+    </div>
+
+    <div class="stat-divider"></div>
+
+    <div class="stat-item">
+        <div class="stat-icon stat-icon--revenue">
+            <Icon name="wallet" size={18} />
+        </div>
+        <div class="stat-content">
+            <span class="stat-value">
+                €{totalRevenue.toFixed(2)}
+            </span>
+            <span class="stat-label">
+                {
+                    hasShopifyData ? (
+                        <span class="shopify-badge">Shopify</span>
+                    ) : (
+                        "Est. Revenue"
+                    )
+                }
+                {
+                    shopifyOrders > 0 && (
+                        <span class="order-count">
+                            {" "}
+                            · {shopifyOrders} orders
+                        </span>
+                    )
+                }
+            </span>
+        </div>
+    </div>
+
+    <div class="stat-divider"></div>
+
+    <div class="stat-item">
+        <div class="stat-icon stat-icon--roas">
+            <Icon name="target" size={18} />
+        </div>
+        <div class="stat-content">
+            <span
+                class={`stat-value ${roas >= 2.5 ? "text-good" : roas >= 1 ? "text-warning" : roas > 0 ? "text-danger" : ""}`}
+            >
+                {roas > 0 ? `${roas.toFixed(2)}x` : "—"}
+            </span>
+            <span class="stat-label">
+                ROAS {hasShopifyData && <span class="shopify-badge">Real</span>}
+            </span>
+        </div>
+    </div>
+
+    <div class="stat-divider"></div>
+
+    <div class="stat-item">
+        <div
+            class={`stat-icon ${alertsToday > 0 ? "stat-icon--alert-active" : "stat-icon--alert"}`}
+        >
+            <Icon name="bell" size={18} />
+        </div>
+        <div class="stat-content">
+            <span class={`stat-value ${alertsToday > 0 ? "text-warning" : ""}`}
+                >{alertsToday}</span
+            >
+            <span class="stat-label">Alerts Today</span>
+        </div>
+    </div>
+</div>
