@@ -14,7 +14,10 @@ const adNav = {
     ],
 };
 
-const toolsNav = [{ href: "/alerts", icon: "bell", label: "Alert History" }];
+const toolsNav = [
+    { href: "/alerts", icon: "bell", label: "Alert History" },
+    { href: "/costs", icon: "wallet", label: "Costs & Overhead" },
+];
 
 function isActive(href: string): boolean {
     if (href === "/") return currentPath === "/";

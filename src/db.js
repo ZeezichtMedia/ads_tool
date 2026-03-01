@@ -191,6 +191,38 @@ export const getDailyStats = async (days = 7) => {
     );
 };
 
+// ─── Financial Tracking (COGS & Overhead) ────────────────
+export const getCampaignSettings = async () => {
+    return supabaseGet('product_campaign_settings');
+};
+
+export const upsertCampaignSettings = async (campaignName, cogs) => {
+    try {
+        await supabaseUpsert('product_campaign_settings', {
+            campaign_name: campaignName,
+            cogs,
+        }, 'campaign_name');
+    } catch (err) {
+        logger.error('Failed to upsert campaign settings', { error: err.message, campaignName });
+    }
+};
+
+export const getBusinessOverhead = async () => {
+    const data = await supabaseGet('business_overhead', 'id=eq.1');
+    return data && data.length > 0 ? data[0] : null;
+};
+
+export const upsertBusinessOverhead = async (overheadData) => {
+    try {
+        await supabaseUpsert('business_overhead', {
+            id: 1, // Store as single row
+            ...overheadData
+        }, 'id');
+    } catch (err) {
+        logger.error('Failed to upsert business overhead', { error: err.message });
+    }
+};
+
 // ─── Graceful Shutdown (no-op for REST) ──────────────────
 export const closeDb = async () => {
     logger.info('Supabase REST client — no pool to close');

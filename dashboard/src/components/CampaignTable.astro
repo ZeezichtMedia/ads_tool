@@ -12,9 +12,11 @@ import {
 
 interface Props {
     adsets: any[];
+    overhead: any;
+    campaignSettings: Record<string, number>;
 }
 
-const { adsets } = Astro.props;
+const { adsets, overhead, campaignSettings } = Astro.props;
 
 // ─── Aggregate adsets into campaigns ─────────────────────
 type CampaignRow = {
@@ -31,6 +33,8 @@ type CampaignRow = {
     purchases: number;
     revenue: number;
     roas: number;
+    cogs: number;
+    netProfit: number;
     performance: string;
 };
 
@@ -65,16 +69,30 @@ const campaigns: CampaignRow[] = [...campaignMap.entries()]
         const roas = spend > 0 && revenue > 0 ? revenue / spend : 0;
         const hasActive = ads.some((a) => a.effective_status === "ACTIVE");
 
+        const cogs = campaignSettings[name] || 0;
+        const totalCogs = purchases * cogs;
+        const transactionFees =
+            revenue * ((overhead?.transaction_fee_percent || 0) / 100) +
+            purchases * (overhead?.transaction_fee_fixed || 0.25);
+        const estimatedRefunds =
+            revenue * ((overhead?.refund_rate_percent || 0) / 100);
+        const netProfit =
+            revenue - spend - totalCogs - transactionFees - estimatedRefunds;
+
         // Performance: use aggregated values
-        const performance = classifyPerformance({
-            spend,
-            cpc,
-            ctr,
-            add_to_carts: atc,
-            purchases,
-            impressions,
-            clicks,
-        });
+        const performance = classifyPerformance(
+            {
+                spend,
+                cpc,
+                ctr,
+                add_to_carts: atc,
+                purchases,
+                impressions,
+                clicks,
+            },
+            cogs,
+            overhead,
+        );
 
         return {
             name,
@@ -92,6 +110,8 @@ const campaigns: CampaignRow[] = [...campaignMap.entries()]
             purchases,
             revenue,
             roas,
+            cogs,
+            netProfit,
             performance,
         };
     })
@@ -138,7 +158,9 @@ function getRoasClass(roas: number): string {
                         <th class="text-right">CTR</th>
                         <th class="text-right">ATCs</th>
                         <th class="text-right">Purch.</th>
+                        <th class="text-right">COGS (€)</th>
                         <th class="text-right">ROAS</th>
+                        <th class="text-right">Profit</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -206,10 +228,28 @@ function getRoasClass(roas: number): string {
                             >
                                 {c.purchases}
                             </td>
+                            <td class="metric text-right">
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    class="cogs-input"
+                                    data-campaign={c.name}
+                                    value={c.cogs > 0 ? c.cogs : ""}
+                                    placeholder="0.00"
+                                />
+                            </td>
                             <td
                                 class={`metric ${c.roas > 0 ? getRoasClass(c.roas) : ""}`}
                             >
                                 {c.roas > 0 ? `${c.roas.toFixed(2)}x` : "—"}
+                            </td>
+                            <td
+                                class={`metric ${c.netProfit > 0 ? "metric-good font-bold" : c.netProfit < 0 ? "metric-danger" : ""}`}
+                            >
+                                {c.netProfit !== 0
+                                    ? `€${c.netProfit.toFixed(2)}`
+                                    : "—"}
                             </td>
                         </tr>
                     ))}
@@ -285,5 +325,83 @@ function getRoasClass(roas: number): string {
         }
     }
 
+    // Handle COGS updates
+    document.querySelectorAll(".cogs-input").forEach((input) => {
+        let timeout: any;
+        input.addEventListener("input", (e) => {
+            clearTimeout(timeout);
+            const target = e.target as HTMLInputElement;
+            const campaignName = target.dataset.campaign;
+            const cogsVal = parseFloat(target.value) || 0;
+
+            target.classList.add("updating");
+
+            timeout = setTimeout(async () => {
+                try {
+                    const res = await fetch("/api/update-campaign-cogs", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            campaign_name: campaignName,
+                            cogs: cogsVal,
+                        }),
+                    });
+
+                    if (res.ok) {
+                        target.classList.remove("updating");
+                        target.classList.add("success");
+                        setTimeout(
+                            () => target.classList.remove("success"),
+                            1000,
+                        );
+                        // Reload page to reflect new profit calculation
+                        setTimeout(() => window.location.reload(), 500);
+                    } else {
+                        target.classList.remove("updating");
+                        target.classList.add("error");
+                    }
+                } catch (err) {
+                    target.classList.remove("updating");
+                    target.classList.add("error");
+                }
+            }, 800);
+        });
+    });
+
     // Auto-refresh is handled by FilterBar.astro
 </script>
+
+<style>
+    .cogs-input {
+        width: 60px;
+        padding: 4px 6px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 13px;
+        text-align: right;
+        transition:
+            border-color 0.2s,
+            background-color 0.2s;
+    }
+
+    .cogs-input:focus {
+        outline: none;
+        border-color: var(--accent-color);
+    }
+
+    .cogs-input.updating {
+        opacity: 0.6;
+    }
+
+    .cogs-input.success {
+        border-color: var(--color-success);
+        background-color: rgba(34, 197, 94, 0.1);
+    }
+
+    .cogs-input.error {
+        border-color: var(--color-danger);
+        background-color: rgba(239, 68, 68, 0.1);
+    }
+</style>

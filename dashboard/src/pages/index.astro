@@ -10,6 +10,8 @@ import {
   getSnapshotsForRange,
   getStatsForRange,
   resolveRange,
+  getBusinessOverhead,
+  getCampaignSettings,
 } from "../lib/db";
 import {
   classifyPerformance,
@@ -37,22 +39,98 @@ let stats: any = {
   roas: 0,
   hasShopifyData: false,
 };
+let overhead: any = null;
+let campaignSettings: Record<string, number> = {};
 let dbError = false;
 
 try {
-  [adsets, stats] = await Promise.all([
-    getSnapshotsForRange(range),
-    getStatsForRange(range),
-  ]);
+  const [adsetsData, statsData, overheadData, settingsData] = await Promise.all(
+    [
+      getSnapshotsForRange(range),
+      getStatsForRange(range),
+      getBusinessOverhead(),
+      getCampaignSettings(),
+    ],
+  );
+  adsets = adsetsData;
+  stats = statsData;
+  overhead = overheadData;
+
+  const settingsDict: Record<string, number> = {};
+  if (Array.isArray(settingsData)) {
+    for (const row of settingsData) {
+      settingsDict[row.campaign_name] = row.cogs;
+    }
+  }
+  campaignSettings = settingsDict;
 } catch (err) {
   console.error("Failed to load dashboard data:", err);
   dbError = true;
 }
 
+// Calculate true profit for the dashboard
+const estimatedAOV = 35;
+let calculatedRevenue = stats.shopifyRevenue || 0;
+if (!stats.hasShopifyData) {
+  calculatedRevenue = stats.totalPurchases * estimatedAOV;
+}
+
+let totalCogs = 0;
+for (const a of adsets) {
+  const cogs = campaignSettings[a.campaign_name] || 0;
+  totalCogs += cogs * (parseInt(a.purchases) || 0);
+}
+
+const transactionFeePercent = overhead?.transaction_fee_percent || 0;
+const transactionFeeFixed = overhead?.transaction_fee_fixed || 0;
+const refundRatePercent = overhead?.refund_rate_percent || 0;
+
+const totalTransactionFees =
+  calculatedRevenue * (transactionFeePercent / 100) +
+  (stats.totalPurchases || 0) * transactionFeeFixed;
+const totalEstimatedRefunds = calculatedRevenue * (refundRatePercent / 100);
+
+let daysInRange = 1;
+if (range.from !== range.to) {
+  const start = new Date(range.from);
+  const end = new Date(range.to);
+  daysInRange = Math.max(
+    1,
+    Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)),
+  );
+} else if (rangeKey === "yesterday" || rangeKey === "today") {
+  daysInRange = 1;
+} else if (rangeKey === "last7days") {
+  daysInRange = 7;
+} else if (rangeKey === "last30days") {
+  daysInRange = 30;
+} else if (rangeKey === "thismonth") {
+  const today = new Date();
+  daysInRange = today.getDate();
+}
+const monthlyFixedCosts =
+  (parseFloat(overhead?.monthly_personnel) || 0) +
+  (parseFloat(overhead?.monthly_contracts) || 0) +
+  (parseFloat(overhead?.monthly_other_overhead) || 0);
+const dailyOverhead = monthlyFixedCosts / 30.44; // Average days in a month
+const totalFixedOverhead = dailyOverhead * daysInRange;
+
+const netProfit =
+  calculatedRevenue -
+  stats.totalSpend -
+  totalCogs -
+  totalTransactionFees -
+  totalEstimatedRefunds -
+  totalFixedOverhead;
+
 // Count per status for filter pills
 const statusMap = new Map<string, number>();
 for (const a of adsets) {
-  const s = classifyPerformance(a);
+  const s = classifyPerformance(
+    a,
+    campaignSettings[a.campaign_name] || 0,
+    overhead,
+  );
   statusMap.set(s, (statusMap.get(s) || 0) + 1);
 }
 
@@ -89,8 +167,9 @@ const statusCounts = STATUS_ORDER.filter((s) => statusMap.has(s)).map((s) => ({
 
           <InfoBanner
             totalSpend={stats.totalSpend}
-            totalRevenue={stats.shopifyRevenue}
+            totalRevenue={stats.shopifyRevenue || calculatedRevenue}
             roas={stats.roas}
+            netProfit={netProfit}
             matchedCount={adsets.length}
             totalCount={adsets.length}
             alertsToday={stats.alertsToday}
@@ -105,7 +184,11 @@ const statusCounts = STATUS_ORDER.filter((s) => statusMap.has(s)).map((s) => ({
             totalCampaigns={adsets.length}
           />
 
-          <CampaignTable adsets={adsets} />
+          <CampaignTable
+            adsets={adsets}
+            overhead={overhead}
+            campaignSettings={campaignSettings}
+          />
         </>
       )
     }

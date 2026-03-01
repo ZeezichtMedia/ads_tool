@@ -10,42 +10,77 @@ export interface ClassifiedAdset {
     purchases: number;
     impressions: number;
     clicks: number;
+    revenue: number;
+    profit: number;
+    poas: number;
 }
 
-export function classifyPerformance(adset: {
-    spend: any; cpc: any; ctr: any;
-    add_to_carts: any; purchases: any;
-    impressions: any; clicks: any;
-}): string {
-    const spend = parseFloat(String(adset.spend));
-    const atc = parseInt(String(adset.add_to_carts));
-    const purchases = parseInt(String(adset.purchases));
-    const cpc = parseFloat(String(adset.cpc));
-    const ctr = adset.ctr ? parseFloat(String(adset.ctr)) : 0;
-    const impressions = parseInt(String(adset.impressions));
+export const ESTIMATED_AOV = 35; // Average order value for ROAS/POAS calculation if real Shopify data per campaign isn't available.
 
-    if (spend < 3) return "Collecting";
-    if (spend >= 30 && atc === 0) return "Kill";
-    if (spend >= 50 && purchases === 0) return "Kill";
-    if (cpc > 1.75 && spend >= 5) return "Wall";
-    if (spend >= 10 && ctr < 1 && impressions > 500) return "Wall";
-    if (spend >= 20 && atc > 0 && purchases === 0) return "Re-evaluate";
-    if (purchases >= 2) return "Scale";
-    if (purchases >= 1) return "Profitable";
-    if (atc >= 2) return "Promising";
-    if (spend >= 10 && atc === 0) return "Re-evaluate";
-    return "Collecting";
+interface OverheadSettings {
+    transaction_fee_fixed: number;
+    transaction_fee_percent: number;
+    refund_rate_percent: number;
+    daily_overhead: number;
+}
+
+export function classifyPerformance(
+    adset: {
+        spend: any; cpc: any; ctr: any;
+        add_to_carts: any; purchases: any;
+        impressions: any; clicks: any;
+    },
+    cogs: number = 0,
+    overhead: OverheadSettings = { // Default overhead if none provided
+        transaction_fee_fixed: 0.25,
+        transaction_fee_percent: 1.5,
+        refund_rate_percent: 0,
+        daily_overhead: 0
+    }
+): string {
+    const spend = parseFloat(String(adset.spend)) || 0;
+    const atc = parseInt(String(adset.add_to_carts)) || 0;
+    const purchases = parseInt(String(adset.purchases)) || 0;
+
+    // Revenue Calculation
+    const grossRevenue = purchases * ESTIMATED_AOV;
+
+    // Cost Calculations
+    const totalCogs = purchases * cogs;
+    const transactionFees = (grossRevenue * (overhead.transaction_fee_percent / 100)) + (purchases * overhead.transaction_fee_fixed);
+    const estimatedRefunds = grossRevenue * (overhead.refund_rate_percent / 100);
+    // Note: Daily overhead is tough to allocate per adset. Typically we evaluate at the campaign or account level.
+    // For single adset/campaign rows, we will omit daily_overhead from the *unit* profit to avoid penalizing single campaigns arbitrarily, 
+    // OR we apply a fraction. Let's not include fixed daily overhead in the per-campaign marginal profit status, 
+    // since that breaks if you have 1 vs 10 campaigns. The Total Dashboard Winst will include it.
+
+    const netProfit = grossRevenue - spend - totalCogs - transactionFees - estimatedRefunds;
+
+    if (spend < 5) return "Collecting ⏳";
+
+    if (purchases > 0) {
+        if (netProfit > 5) return "Profitable 📈";
+        if (netProfit >= -5 && netProfit <= 5) return "Break-even ⚖️";
+        return "Loss-making 📉";
+    }
+
+    // No purchases yet
+    if (spend >= 30 && atc === 0) return "Needs Attention ⚠️";
+    if (spend >= 50 && purchases === 0) return "Needs Attention ⚠️";
+    if (atc >= 2) return "Promising 🚀";
+    if (spend >= 15 && atc === 0) return "Needs Attention ⚠️";
+
+    return "Collecting ⏳";
 }
 
 export function getPerformanceClass(perf: string): string {
     const map: Record<string, string> = {
-        Scale: "perf-scale",
-        Profitable: "perf-profitable",
-        Promising: "perf-promising",
-        "Re-evaluate": "perf-reevaluate",
-        Kill: "perf-kill",
-        Wall: "perf-wall",
-        Collecting: "perf-collecting",
+        "Profitable 📈": "perf-scale", // Reusing the green CSS
+        "Break-even ⚖️": "perf-promising", // Reusing purple
+        "Loss-making 📉": "perf-kill", // Reusing red
+        "Promising 🚀": "perf-profitable", // Reusing blue
+        "Needs Attention ⚠️": "perf-wall", // Reusing orange
+        "Collecting ⏳": "perf-collecting", // Reusing gray
     };
     return map[perf] || "perf-collecting";
 }
@@ -87,17 +122,14 @@ export function fmtNumber(val: number | null | undefined): string {
 
 // ─── Status Colors for Filter Pills ─────────────────────
 export const STATUS_ORDER = [
-    "Scale", "Profitable", "Promising", "Re-evaluate", "Kill", "Wall", "Collecting",
+    "Profitable 📈", "Break-even ⚖️", "Promising 🚀", "Loss-making 📉", "Needs Attention ⚠️", "Collecting ⏳",
 ] as const;
 
 export const STATUS_COLORS: Record<string, { color: string; bgColor: string }> = {
-    Scale: { color: "#22c55e", bgColor: "rgba(34,197,94,0.12)" },
-    Profitable: { color: "#3b82f6", bgColor: "rgba(59,130,246,0.12)" },
-    Promising: { color: "#a855f7", bgColor: "rgba(168,85,247,0.12)" },
-    "Re-evaluate": { color: "#eab308", bgColor: "rgba(234,179,8,0.12)" },
-    Kill: { color: "#ef4444", bgColor: "rgba(239,68,68,0.12)" },
-    Wall: { color: "#f97316", bgColor: "rgba(249,115,22,0.12)" },
-    Collecting: { color: "#6b7280", bgColor: "rgba(107,114,128,0.10)" },
+    "Profitable 📈": { color: "#22c55e", bgColor: "rgba(34,197,94,0.12)" },
+    "Break-even ⚖️": { color: "#a855f7", bgColor: "rgba(168,85,247,0.12)" },
+    "Loss-making 📉": { color: "#ef4444", bgColor: "rgba(239,68,68,0.12)" },
+    "Promising 🚀": { color: "#3b82f6", bgColor: "rgba(59,130,246,0.12)" },
+    "Needs Attention ⚠️": { color: "#f97316", bgColor: "rgba(249,115,22,0.12)" },
+    "Collecting ⏳": { color: "#6b7280", bgColor: "rgba(107,114,128,0.10)" },
 };
-
-export const ESTIMATED_AOV = 35; // Average order value for ROAS calculation

@@ -197,3 +197,52 @@ export async function getStatsForRange(range: DateRange) {
 export async function getTodayStats() {
   return getStatsForRange(resolveRange('today'));
 }
+
+// ─── Financial Tracking (COGS & Overhead) ────────────────
+
+export async function getBusinessOverhead() {
+  const data = await query('business_overhead', 'id=eq.1');
+  return data && data.length > 0 ? data[0] : null;
+}
+
+export async function upsertBusinessOverhead(data: any) {
+  const url = `${SUPABASE_URL}/rest/v1/business_overhead?on_conflict=id`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal,resolution=merge-duplicates',
+    },
+    body: JSON.stringify({ id: 1, ...data }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase Upsert Error (${res.status}): ${text}`);
+  }
+}
+
+export async function getCampaignSettings() {
+  return query('product_campaign_settings');
+}
+
+export async function upsertCampaignSettings(campaignName: string, cogs: number) {
+  const url = `${SUPABASE_URL}/rest/v1/product_campaign_settings?on_conflict=campaign_name`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal,resolution=merge-duplicates',
+    },
+    body: JSON.stringify({ campaign_name: campaignName, cogs }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase Upsert Error (${res.status}): ${text}`);
+  }
+}
