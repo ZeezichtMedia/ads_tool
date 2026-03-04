@@ -25,7 +25,7 @@ const getCostPerActionValue = (costPerActions = [], type) => {
 
 // ─── Fetch Adset Delivery Statuses ───────────────────────
 // Separate call to the adsets endpoint to get effective_status
-const fetchAdsetStatuses = async () => {
+const fetchAdsetStatuses = async (accountId) => {
     const statusMap = new Map();
     try {
         const params = new URLSearchParams({
@@ -33,7 +33,7 @@ const fetchAdsetStatuses = async () => {
             limit: '500',
             access_token: process.env.META_ACCESS_TOKEN,
         });
-        const url = `https://graph.facebook.com/${META_API_VERSION}/${process.env.META_AD_ACCOUNT_ID}/adsets?${params}`;
+        const url = `https://graph.facebook.com/${META_API_VERSION}/${accountId}/adsets?${params}`;
         const res = await fetch(url);
         const data = await res.json();
         if (data.data) {
@@ -49,7 +49,7 @@ const fetchAdsetStatuses = async () => {
 };
 
 // ─── Fetch All Adset Insights (all statuses) ─────────────
-export const fetchAdsetInsights = async () => {
+export const fetchAdsetInsights = async (accountId) => {
     // Request unique link click metrics via actions + cost_per_action_type
     // Also request inline_link_clicks and unique_inline_link_clicks directly
     const fields = [
@@ -97,7 +97,7 @@ export const fetchAdsetInsights = async () => {
         access_token: process.env.META_ACCESS_TOKEN,
     });
 
-    const url = `https://graph.facebook.com/${META_API_VERSION}/${process.env.META_AD_ACCOUNT_ID}/insights?${params}`;
+    const url = `https://graph.facebook.com/${META_API_VERSION}/${accountId}/insights?${params}`;
 
     // Retry loop with exponential backoff
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -137,7 +137,7 @@ export const fetchAdsetInsights = async () => {
             const adsets = data.data || [];
 
             // Fetch delivery statuses for all adsets
-            const statusMap = await fetchAdsetStatuses();
+            const statusMap = await fetchAdsetStatuses(accountId);
 
             // Normalize: extract unique link click metrics into flat fields
             const normalized = adsets.map((a) => {

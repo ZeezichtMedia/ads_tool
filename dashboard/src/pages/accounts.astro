@@ -1,0 +1,499 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Sidebar from "../components/Sidebar.astro";
+import Icon from "../components/Icon.astro";
+import { getMetaAccounts } from "../lib/db";
+
+let accounts: any[] = [];
+let dbError = false;
+
+try {
+  accounts = await getMetaAccounts();
+} catch (err) {
+  console.error("Failed to load accounts:", err);
+  dbError = true;
+}
+---
+
+<Layout title="Ad Accounts">
+  <Sidebar />
+
+  <div class="main-content">
+    <div class="page-header">
+      <h1 class="page-title">Ad Accounts</h1>
+      <span class="page-subtitle">Manage your Meta ad accounts</span>
+    </div>
+
+    {dbError ? (
+      <div class="error-container">
+        <div class="error-card">
+          <Icon name="wifi-off" size={48} class="text-danger" />
+          <h3 class="error-title">Database Connection Error</h3>
+          <p class="error-text">Cannot connect to Supabase.</p>
+        </div>
+      </div>
+    ) : (
+      <div class="accounts-container">
+        <!-- Add Account Form -->
+        <div class="accounts-add-card">
+          <div class="add-card-header">
+            <Icon name="plus" size={16} />
+            <span>Add Account</span>
+          </div>
+          <form id="addAccountForm" class="add-form">
+            <div class="add-form-row">
+              <input
+                type="text"
+                id="accountId"
+                placeholder="act_XXXXXXXXX"
+                class="form-input"
+                required
+              />
+              <input
+                type="text"
+                id="accountName"
+                placeholder="Account name"
+                class="form-input form-input--wide"
+                required
+              />
+              <button type="submit" class="btn-accent">
+                <Icon name="plus" size={14} />
+                Add
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Accounts List -->
+        <div class="accounts-list" id="accountsList">
+          {accounts.length === 0 ? (
+            <div class="accounts-empty">
+              <Icon name="users" size={36} class="text-muted" />
+              <p>No ad accounts configured yet.</p>
+              <p class="text-muted">Add an account above to start monitoring.</p>
+            </div>
+          ) : (
+            accounts.map((account) => (
+              <div
+                class:list={["account-card", { "account-disabled": !account.is_enabled }]}
+                data-id={account.id}
+              >
+                <div class="account-info">
+                  <div class="account-status-dot-wrap">
+                    <div
+                      class:list={[
+                        "account-status-dot",
+                        account.is_enabled ? "account-status-dot--active" : "account-status-dot--disabled",
+                      ]}
+                    />
+                  </div>
+                  <div class="account-details">
+                    <span class="account-name">{account.name}</span>
+                    <span class="account-id">{account.id}</span>
+                  </div>
+                </div>
+
+                <div class="account-actions">
+                  <label class="toggle-switch">
+                    <input
+                      type="checkbox"
+                      class="toggle-input"
+                      checked={account.is_enabled}
+                      data-account-id={account.id}
+                    />
+                    <span class="toggle-slider" />
+                  </label>
+                  <button
+                    class="btn-icon btn-icon--danger"
+                    data-delete-id={account.id}
+                    title="Remove account"
+                  >
+                    <Icon name="trash" size={14} />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div class="accounts-info-note">
+          <Icon name="lightbulb" size={14} />
+          <span>Changes take effect on the next monitoring cycle (every 5 minutes). Enabled accounts will have their campaigns fetched and monitored.</span>
+        </div>
+      </div>
+    )}
+  </div>
+</Layout>
+
+<style>
+  .accounts-container {
+    padding: 24px 28px;
+    max-width: 800px;
+  }
+
+  /* ─── Add Card ────────────── */
+  .accounts-add-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+
+  .add-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-light);
+  }
+
+  .add-form {
+    padding: 14px 18px;
+  }
+
+  .add-form-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .form-input {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--text-primary);
+    font-family: inherit;
+    min-width: 160px;
+  }
+
+  .form-input--wide {
+    flex: 1;
+  }
+
+  .form-input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .form-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-bg);
+  }
+
+  .btn-accent {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn-accent:hover {
+    opacity: 0.85;
+  }
+
+  /* ─── Account Cards ────────── */
+  .accounts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .account-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    transition: all 0.2s ease;
+  }
+
+  .account-card:hover {
+    border-color: var(--text-muted);
+    background: var(--bg-card-hover);
+  }
+
+  .account-disabled {
+    opacity: 0.5;
+  }
+
+  .account-info {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .account-status-dot-wrap {
+    display: flex;
+    align-items: center;
+  }
+
+  .account-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .account-status-dot--active {
+    background: #22c55e;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  .account-status-dot--disabled {
+    background: #5c5c68;
+  }
+
+  .account-details {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .account-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .account-id {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  .account-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* ─── Toggle Switch ────────── */
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    cursor: pointer;
+  }
+
+  .toggle-input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .toggle-slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #3a3a40;
+    border-radius: 22px;
+    transition: background 0.25s ease;
+  }
+
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    left: 3px;
+    bottom: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.25s ease;
+  }
+
+  .toggle-input:checked + .toggle-slider {
+    background: #22c55e;
+  }
+
+  .toggle-input:checked + .toggle-slider::before {
+    transform: translateX(18px);
+  }
+
+  /* ─── Icon Button ────────── */
+  .btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-icon:hover {
+    color: var(--text-primary);
+    background: var(--bg-card-hover);
+    border-color: var(--text-muted);
+  }
+
+  .btn-icon--danger:hover {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.08);
+  }
+
+  /* ─── Empty State ────────── */
+  .accounts-empty {
+    text-align: center;
+    padding: 48px 24px;
+    background: var(--bg-card);
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+  }
+
+  .accounts-empty p {
+    margin-top: 10px;
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  /* ─── Info Note ────────── */
+  .accounts-info-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 20px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: var(--accent-bg);
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+    border: 1px solid rgba(212, 114, 12, 0.15);
+  }
+
+  .accounts-info-note .icon {
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: var(--accent);
+  }
+</style>
+
+<script>
+  // ─── Handle Add Account ────────────────────────
+  const form = document.getElementById('addAccountForm') as HTMLFormElement;
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const idInput = document.getElementById('accountId') as HTMLInputElement;
+    const nameInput = document.getElementById('accountName') as HTMLInputElement;
+
+    const id = idInput.value.trim();
+    const name = nameInput.value.trim();
+
+    if (!id || !name) return;
+
+    try {
+      const res = await fetch('/api/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', id, name }),
+      });
+
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        const data = await res.json();
+        alert('Error: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      alert('Network error');
+    }
+  });
+
+  // ─── Handle Toggle Switches ────────────────────
+  document.querySelectorAll('.toggle-input').forEach((toggle) => {
+    toggle.addEventListener('change', async (e) => {
+      const input = e.target as HTMLInputElement;
+      const accountId = input.dataset.accountId;
+      const isEnabled = input.checked;
+
+      // Update visual state immediately
+      const card = input.closest('.account-card') as HTMLElement;
+      const dot = card?.querySelector('.account-status-dot') as HTMLElement;
+
+      if (card) {
+        card.classList.toggle('account-disabled', !isEnabled);
+      }
+      if (dot) {
+        dot.classList.toggle('account-status-dot--active', isEnabled);
+        dot.classList.toggle('account-status-dot--disabled', !isEnabled);
+      }
+
+      try {
+        const res = await fetch('/api/accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'toggle', id: accountId, is_enabled: isEnabled }),
+        });
+
+        if (!res.ok) {
+          // Revert on error
+          input.checked = !isEnabled;
+          if (card) card.classList.toggle('account-disabled', isEnabled);
+          if (dot) {
+            dot.classList.toggle('account-status-dot--active', !isEnabled);
+            dot.classList.toggle('account-status-dot--disabled', isEnabled);
+          }
+          alert('Failed to update account');
+        }
+      } catch {
+        input.checked = !isEnabled;
+        if (card) card.classList.toggle('account-disabled', isEnabled);
+        alert('Network error');
+      }
+    });
+  });
+
+  // ─── Handle Delete ─────────────────────────────
+  document.querySelectorAll('[data-delete-id]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const target = e.currentTarget as HTMLElement;
+      const accountId = target.dataset.deleteId;
+
+      if (!confirm('Remove this account from monitoring?')) return;
+
+      try {
+        const res = await fetch('/api/accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', id: accountId }),
+        });
+
+        if (res.ok) {
+          const card = target.closest('.account-card');
+          card?.remove();
+        } else {
+          alert('Failed to remove account');
+        }
+      } catch {
+        alert('Network error');
+      }
+    });
+  });
+</script>

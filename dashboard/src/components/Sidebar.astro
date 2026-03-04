@@ -9,6 +9,7 @@ const mainNav = [{ href: "/", icon: "layout-dashboard", label: "Dashboard" }];
 const adNav = {
     items: [
         { href: "/", label: "Overview", icon: "bar-chart-3" },
+        { href: "/trends", label: "Trends", icon: "trending-up" },
         { href: "/campaigns/active", label: "Active Campaigns", icon: "play" },
         { href: "/campaigns/inactive", label: "Inactive", icon: "pause" },
     ],
@@ -18,6 +19,11 @@ const toolsNav = [
     { href: "/alerts", icon: "bell", label: "Alert History" },
     { href: "/costs", icon: "wallet", label: "Costs & Overhead" },
     { href: "/rules", icon: "sliders", label: "Alert Rules" },
+    { href: "/accounts", icon: "users", label: "Ad Accounts" },
+];
+
+const shopifyNav = [
+    { href: "/orders", icon: "shopping-cart", label: "Orders" },
 ];
 
 function isActive(href: string): boolean {
@@ -61,6 +67,28 @@ function isActive(href: string): boolean {
         </div>
         {
             adNav.items.map((item) => (
+                <a
+                    href={item.href}
+                    class:list={[
+                        "sidebar-sub-link",
+                        { active: isActive(item.href) },
+                    ]}
+                >
+                    <Icon name={item.icon} size={14} />
+                    <span>{item.label}</span>
+                </a>
+            ))
+        }
+    </div>
+
+    <!-- Shopify Section -->
+    <div class="sidebar-nav-group">
+        <div class="sidebar-section">
+            <Icon name="shopping-cart" size={12} />
+            <span>Shopify</span>
+        </div>
+        {
+            shopifyNav.map((item) => (
                 <a
                     href={item.href}
                     class:list={[

@@ -3,12 +3,26 @@ import Layout from "../../layouts/Layout.astro";
 import Sidebar from "../../components/Sidebar.astro";
 import InfoBanner from "../../components/InfoBanner.astro";
 import CampaignTable from "../../components/CampaignTable.astro";
-import { getLatestSnapshots, getTodayStats } from "../../lib/db";
+import {
+    getLatestSnapshots,
+    getTodayStats,
+    getBusinessOverhead,
+    getCampaignSettings,
+} from "../../lib/db";
 
-const [allAdsets, stats] = await Promise.all([
+const [allAdsets, stats, overhead, settingsData] = await Promise.all([
     getLatestSnapshots(),
     getTodayStats(),
+    getBusinessOverhead(),
+    getCampaignSettings(),
 ]);
+
+const settingsDict: Record<string, number> = {};
+if (Array.isArray(settingsData)) {
+    for (const row of settingsData) {
+        settingsDict[row.campaign_name] = row.cogs;
+    }
+}
 
 // Filter to only ACTIVE adsets
 const adsets = allAdsets.filter((a: any) => a.effective_status === "ACTIVE");
@@ -24,6 +38,46 @@ const activePurchases = adsets.reduce(
     (sum: number, a: any) => sum + (parseInt(a.purchases) || 0),
     0,
 );
+
+const estimatedAOV = 35;
+let calculatedRevenue = stats.shopifyRevenue || 0;
+if (!stats.hasShopifyData) {
+    calculatedRevenue = activePurchases * estimatedAOV;
+}
+
+// Calculate total COGS for active adsets
+let totalCogs = 0;
+for (const a of adsets) {
+    const cogs = settingsDict[a.campaign_name] || 0;
+    totalCogs += cogs * (parseInt(a.purchases) || 0);
+}
+
+// Transaction fees and refunds
+const transactionFeePercent = overhead?.transaction_fee_percent || 0;
+const transactionFeeFixed = overhead?.transaction_fee_fixed || 0;
+const refundRatePercent = overhead?.refund_rate_percent || 0;
+
+const totalTransactionFees =
+    calculatedRevenue * (transactionFeePercent / 100) +
+    (activePurchases || 0) * transactionFeeFixed;
+const totalEstimatedRefunds = calculatedRevenue * (refundRatePercent / 100);
+
+// Overhead (Daily rate)
+const monthlyFixedCosts =
+    (parseFloat(overhead?.monthly_personnel) || 0) +
+    (parseFloat(overhead?.monthly_contracts) || 0) +
+    (parseFloat(overhead?.monthly_other_overhead) || 0);
+const dailyOverhead = monthlyFixedCosts / 30.44;
+const totalFixedOverhead = dailyOverhead * 1; // 1 day range for "active today"
+
+// Calculate true net profit
+const netProfit =
+    calculatedRevenue -
+    activeSpend -
+    totalCogs -
+    totalTransactionFees -
+    totalEstimatedRefunds -
+    totalFixedOverhead;
 ---
 
 <Layout title="Active Campaigns">
@@ -33,6 +87,7 @@ const activePurchases = adsets.reduce(
             totalSpend={activeSpend}
             totalRevenue={stats.shopifyRevenue}
             roas={stats.roas}
+            netProfit={netProfit}
             matchedCount={adsets.length}
             totalCount={allAdsets.length}
             totalAtc={activeAtc}
@@ -44,6 +99,10 @@ const activePurchases = adsets.reduce(
             <h2 class="page-title">Active Campaigns</h2>
             <span class="page-subtitle">{adsets.length} active adsets</span>
         </div>
-        <CampaignTable adsets={adsets} />
+        <CampaignTable
+            adsets={adsets}
+            overhead={overhead}
+            campaignSettings={settingsDict}
+        />
     </div>
 </Layout>

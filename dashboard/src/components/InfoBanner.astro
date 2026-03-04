@@ -1,11 +1,19 @@
 ---
 import Icon from "./Icon.astro";
 
+interface AccountBreakdownItem {
+    account_id: string;
+    name: string;
+    spend: number;
+    atc: number;
+    purchases: number;
+}
+
 interface Props {
     totalSpend: number;
     totalRevenue: number;
     roas: number;
-    netProfit: number;
+    netProfit?: number;
     matchedCount: number;
     totalCount: number;
     alertsToday?: number;
@@ -13,13 +21,20 @@ interface Props {
     totalPurchases?: number;
     shopifyOrders?: number;
     hasShopifyData?: boolean;
+    prevSpend?: number;
+    prevAtc?: number;
+    prevPurchases?: number;
+    prevRevenue?: number;
+    prevRoas?: number;
+    accountBreakdown?: AccountBreakdownItem[];
+    spendHistory?: { date: string; spend: number }[];
 }
 
 const {
     totalSpend,
     totalRevenue,
     roas,
-    netProfit,
+    netProfit = 0,
     matchedCount,
     totalCount,
     alertsToday = 0,
@@ -27,7 +42,74 @@ const {
     totalPurchases = 0,
     shopifyOrders = 0,
     hasShopifyData = false,
+    prevSpend = 0,
+    prevAtc = 0,
+    prevPurchases = 0,
+    prevRevenue = 0,
+    prevRoas = 0,
+    accountBreakdown = [],
+    spendHistory = [],
 } = Astro.props;
+
+// ─── Delta helpers ──────────────────────────────────────
+function calcDelta(
+    current: number,
+    previous: number,
+): { pct: number; direction: "up" | "down" | "flat" } {
+    if (previous === 0 && current === 0) return { pct: 0, direction: "flat" };
+    if (previous === 0) return { pct: 100, direction: "up" };
+    const pct = ((current - previous) / previous) * 100;
+    if (Math.abs(pct) < 1) return { pct: 0, direction: "flat" };
+    return { pct: Math.abs(pct), direction: pct > 0 ? "up" : "down" };
+}
+
+function deltaHtml(
+    current: number,
+    previous: number,
+    invertColor = false,
+): string {
+    const d = calcDelta(current, previous);
+    if (d.direction === "flat") return "";
+    // For spend: up = red (bad), down = green (good). invertColor flips this.
+    const isGood = invertColor ? d.direction === "down" : d.direction === "up";
+    const color = isGood ? "#22c55e" : "#ef4444";
+    const arrow = d.direction === "up" ? "↑" : "↓";
+    return `<span class="delta-badge" style="color:${color}">${arrow}${d.pct.toFixed(0)}%</span>`;
+}
+
+const spendDelta = deltaHtml(totalSpend, prevSpend, true); // spend up = bad
+const atcDelta = deltaHtml(totalAtc, prevAtc); // atc up = good
+const purchDelta = deltaHtml(totalPurchases, prevPurchases); // purchases up = good
+const revDelta = deltaHtml(totalRevenue, prevRevenue); // revenue up = good
+const roasDelta = deltaHtml(roas, prevRoas); // roas up = good
+
+// ─── Sparkline SVG ──────────────────────────────────────
+function buildSparklinePath(data: { spend: number }[]): string {
+    if (data.length < 2) return "";
+    const values = data.map((d) => d.spend);
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+    const range = max - min || 1;
+    const w = 80;
+    const h = 24;
+    const padding = 2;
+
+    const points = values.map((v, i) => {
+        const x = padding + (i / (values.length - 1)) * (w - padding * 2);
+        const y = padding + (1 - (v - min) / range) * (h - padding * 2);
+        return `${x},${y}`;
+    });
+
+    return `M${points.join(" L")}`;
+}
+
+const sparkPath = buildSparklinePath(spendHistory);
+const sparkTrending =
+    spendHistory.length >= 2
+        ? spendHistory[spendHistory.length - 1].spend >=
+          spendHistory[spendHistory.length - 2].spend
+        : true;
+const sparkColor = sparkTrending ? "#ef4444" : "#22c55e"; // red if trending up (spend), green if down
 ---
 
 <div class="stats-bar">
@@ -36,9 +118,31 @@ const {
             <Icon name="euro" size={18} />
         </div>
         <div class="stat-content">
-            <span class="stat-value">€{totalSpend.toFixed(2)}</span>
+            <span class="stat-value"
+                >€{totalSpend.toFixed(2)}
+                <Fragment set:html={spendDelta} /></span
+            >
             <span class="stat-label">META Spend</span>
         </div>
+        {
+            sparkPath && (
+                <svg
+                    class="sparkline"
+                    width="80"
+                    height="24"
+                    viewBox="0 0 80 24"
+                >
+                    <path
+                        d={sparkPath}
+                        fill="none"
+                        stroke={sparkColor}
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    />
+                </svg>
+            )
+        }
     </div>
 
     <div class="stat-divider"></div>
@@ -48,7 +152,9 @@ const {
             <Icon name="shopping-cart" size={18} />
         </div>
         <div class="stat-content">
-            <span class="stat-value">{totalAtc}</span>
+            <span class="stat-value"
+                >{totalAtc} <Fragment set:html={atcDelta} /></span
+            >
             <span class="stat-label">Add to Carts</span>
         </div>
     </div>
@@ -60,7 +166,9 @@ const {
             <Icon name="credit-card" size={18} />
         </div>
         <div class="stat-content">
-            <span class="stat-value">{totalPurchases}</span>
+            <span class="stat-value"
+                >{totalPurchases} <Fragment set:html={purchDelta} /></span
+            >
             <span class="stat-label">Purchases</span>
         </div>
     </div>
@@ -74,6 +182,7 @@ const {
         <div class="stat-content">
             <span class="stat-value">
                 €{totalRevenue.toFixed(2)}
+                <Fragment set:html={revDelta} />
             </span>
             <span class="stat-label">
                 {
@@ -122,6 +231,7 @@ const {
                 class={`stat-value ${roas >= 2.5 ? "text-good" : roas >= 1 ? "text-warning" : roas > 0 ? "text-danger" : ""}`}
             >
                 {roas > 0 ? `${roas.toFixed(2)}x` : "—"}
+                <Fragment set:html={roasDelta} />
             </span>
             <span class="stat-label">
                 ROAS {hasShopifyData && <span class="shopify-badge">Real</span>}
@@ -145,3 +255,82 @@ const {
         </div>
     </div>
 </div>
+
+{
+    accountBreakdown.length > 1 && (
+        <div class="account-breakdown">
+            <span class="breakdown-label">Per account:</span>
+            {accountBreakdown.map((acc, i) => (
+                <span class="breakdown-item">
+                    <span class="breakdown-name">{acc.name}</span>
+                    <span class="breakdown-spend">€{acc.spend.toFixed(2)}</span>
+                    {i < accountBreakdown.length - 1 && (
+                        <span class="breakdown-sep">·</span>
+                    )}
+                </span>
+            ))}
+        </div>
+    )
+}
+
+<style>
+    .delta-badge {
+        font-size: 11px;
+        font-weight: 600;
+        margin-left: 4px;
+        vertical-align: middle;
+    }
+
+    .account-breakdown {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        margin-top: -8px;
+        margin-bottom: 16px;
+        font-size: 12px;
+        color: var(--text-muted);
+        flex-wrap: wrap;
+    }
+
+    .breakdown-label {
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-right: 2px;
+    }
+
+    .breakdown-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .breakdown-name {
+        color: var(--text-secondary);
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .breakdown-spend {
+        font-family: "Inter", system-ui, sans-serif;
+        font-feature-settings: "tnum";
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .breakdown-sep {
+        color: var(--border-color);
+        margin: 0 2px;
+    }
+
+    .sparkline {
+        margin-left: 4px;
+        opacity: 0.8;
+        flex-shrink: 0;
+    }
+</style>

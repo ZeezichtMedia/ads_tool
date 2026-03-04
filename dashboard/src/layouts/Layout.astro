@@ -1,4 +1,6 @@
 ---
+import SaleToast from "../components/SaleToast.astro";
+
 interface Props {
   title: string;
   description?: string;
@@ -32,6 +34,7 @@ const { title, description = "META Ads real-time monitoring dashboard" } =
     </script>
   </head>
   <body>
+    <SaleToast />
     <slot />
   </body>
 </html>

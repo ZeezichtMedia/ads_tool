@@ -11,10 +11,10 @@
 import 'dotenv/config';
 import cron from 'node-cron';
 import { logger } from './logger.js';
-import { initDb, hasAlertedToday, logAlert, saveSnapshot, saveDailyStats, closeDb, getActiveAlertRules, getCampaignSettings, getBusinessOverhead } from './db.js';
+import { initDb, hasAlertedToday, logAlert, saveSnapshot, saveDailyStats, closeDb, getActiveAlertRules, getCampaignSettings, getBusinessOverhead, getEnabledAccounts, syncShopifyOrders } from './db.js';
 import { fetchAdsetInsights, getMockAdsets } from './metaClient.js';
 import { checkThresholds, getATC, getPurchases, parseMetrics } from './thresholds.js';
-import { sendTelegramAlert, sendStartupMessage, sendErrorAlert } from './alerter.js';
+import { sendTelegramAlert, sendStartupMessage, sendErrorAlert, sendDailyDigest } from './alerter.js';
 import { isConfigured as isShopifyConfigured, getTodayOrders } from './shopifyClient.js';
 
 // ─── Configuration ───────────────────────────────────────
@@ -22,6 +22,7 @@ const DRY_RUN = process.argv.includes('--dry-run');
 const CRON_SCHEDULE = process.env.CRON_SCHEDULE || '*/5 * * * *';
 let cycleCount = 0;
 let cronJob = null;
+let digestJob = null;
 
 // ─── Validate Environment ────────────────────────────────
 const TELEGRAM_ENABLED = !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
@@ -30,7 +31,6 @@ const SHOPIFY_ENABLED = isShopifyConfigured();
 const validateEnv = () => {
     const required = [
         'META_ACCESS_TOKEN',
-        'META_AD_ACCOUNT_ID',
         'SUPABASE_URL',
         'SUPABASE_ANON_KEY',
     ];
@@ -106,32 +106,34 @@ const runCycle = async () => {
     logger.info(`Cycle #${cycleCount} starting...`);
 
     try {
-        // 1. Fetch adset data from META
-        let adsets;
-        try {
-            adsets = DRY_RUN ? getMockAdsets() : await fetchAdsetInsights();
-        } catch (metaErr) {
-            // Detect META token expiry
-            const msg = metaErr.message || '';
-            if (msg.includes('190') || msg.includes('OAuthException') || msg.includes('access token')) {
-                logger.error('🔴 META ACCESS TOKEN EXPIRED OR INVALID!', { error: msg });
-                if (TELEGRAM_ENABLED) {
-                    await sendErrorAlert(
-                        `🔴 <b>META Token Error</b>\n\nYour META access token is expired or invalid.\nPlease refresh it in the .env file.\n\n<code>${msg.slice(0, 200)}</code>`
-                    );
-                }
+        // 1. Get enabled accounts from DB (fallback to env var)
+        let accounts = [];
+        if (!DRY_RUN) {
+            try {
+                accounts = await getEnabledAccounts();
+            } catch (err) {
+                logger.warn('Could not fetch accounts from DB, falling back to env var', { error: err.message });
             }
-            throw metaErr;
         }
 
-        if (adsets.length === 0) {
-            logger.info('No active adsets found');
+        // Fallback: use env var if no DB accounts
+        if (accounts.length === 0 && process.env.META_AD_ACCOUNT_ID) {
+            accounts = [{ id: process.env.META_AD_ACCOUNT_ID, name: 'Default (env)' }];
+        }
+
+        if (accounts.length === 0 && !DRY_RUN) {
+            logger.warn('No Meta ad accounts configured — add accounts via the dashboard');
             return;
         }
 
-        logger.info(`Processing ${adsets.length} adset(s)`);
+        // For dry run, use a mock account
+        if (DRY_RUN) {
+            accounts = [{ id: 'mock_account', name: 'Mock Account' }];
+        }
 
-        // 2. Fetch external dependencies (Shopify, Rules, Financials) in parallel-ish
+        logger.info(`Processing ${accounts.length} account(s): ${accounts.map(a => a.name).join(', ')}`);
+
+        // 2. Fetch external dependencies (Shopify, Rules, Financials) — shared across accounts
         const [shopifyData, activeRulesData, campaignSettingsData, overheadData] = await Promise.all([
             fetchShopifyRevenue(),
             DRY_RUN ? Promise.resolve([]) : getActiveAlertRules(),
@@ -143,114 +145,153 @@ const runCycle = async () => {
         const rawCampaignSettings = campaignSettingsData || [];
         const businessOverhead = overheadData || null;
 
+        // Sync Shopify orders to DB for the Orders page
+        if (shopifyData.orders && shopifyData.orders.length > 0) {
+            try {
+                await syncShopifyOrders(shopifyData.orders);
+            } catch (err) {
+                logger.error('Failed to sync Shopify orders', { error: err.message });
+            }
+        }
+
         // Build campaign COGS map for fast lookups
         const campaignCogsMap = {};
         for (const cs of rawCampaignSettings) {
             campaignCogsMap[cs.campaign_name] = parseFloat(cs.cogs || 0);
         }
 
-        let alertsFired = 0;
-        let totalSpend = 0;
-        let totalClicks = 0;
-        let totalImpressions = 0;
-        let totalAtc = 0;
-        let totalPurchases = 0;
-        let totalRevenue = 0;
-        let totalProfit = 0;
+        let grandTotalAlerts = 0;
 
-        for (const adset of adsets) {
-            const cogs = campaignCogsMap[adset.campaign_name] || 0;
+        // 3. Loop through each enabled account
+        for (const account of accounts) {
+            const accountId = account.id;
+            logger.info(`── Account: ${account.name} (${accountId})`);
 
-            // 3. Parse metrics and save snapshot
-            const metrics = parseMetrics(adset, cogs, businessOverhead);
-
-            totalSpend += metrics.spend;
-            totalClicks += metrics.clicks;
-            totalImpressions += metrics.impressions;
-            totalAtc += metrics.atc;
-            totalPurchases += metrics.purchases;
-            totalRevenue += metrics.revenue || 0;
-            totalProfit += metrics.net_profit || 0;
-
-            if (!DRY_RUN) {
-                await saveSnapshot(adset, metrics);
-            }
-
-            // 4. Check thresholds using dynamic rules engine
-            // If dry run and no rules from DB, maybe provide some mock rules
-            const currentRules = activeRules.length > 0 ? activeRules : (DRY_RUN ? [
-                { name: 'mock_rule', emoji: '⚙️', severity: 'low', message_template: 'Mock alert run {spend}', conditions: [] }
-            ] : []);
-
-            const alerts = checkThresholds(adset, currentRules, cogs, businessOverhead);
-
-            for (const alert of alerts) {
-                // 5. Deduplicate
-                if (!DRY_RUN) {
-                    const alreadySent = await hasAlertedToday(adset.adset_id, alert.rule);
-                    if (alreadySent) {
-                        logger.debug('Alert already sent today, skipping', {
-                            adsetId: adset.adset_id,
-                            rule: alert.rule,
-                        });
-                        continue;
-                    }
-                }
-
-                // 6. Build and send alert
-                const message = formatAlertMessage(adset, alert);
-
-                if (DRY_RUN) {
-                    console.log('\n' + '─'.repeat(50));
-                    console.log('📨 ALERT (dry run):');
-                    console.log(message.replace(/<[^>]*>/g, '')); // strip HTML for console
-                    console.log('─'.repeat(50));
-                } else {
+            let adsets;
+            try {
+                adsets = DRY_RUN ? getMockAdsets() : await fetchAdsetInsights(accountId);
+            } catch (metaErr) {
+                const msg = metaErr.message || '';
+                if (msg.includes('190') || msg.includes('OAuthException') || msg.includes('access token')) {
+                    logger.error('🔴 META ACCESS TOKEN EXPIRED OR INVALID!', { error: msg, accountId });
                     if (TELEGRAM_ENABLED) {
-                        await sendTelegramAlert(message);
-                    } else {
-                        console.log('\n📨 ALERT (no Telegram):', message.replace(/<[^>]*>/g, ''));
+                        await sendErrorAlert(
+                            `🔴 <b>META Token Error</b>\n\nAccount: ${account.name}\nYour META access token is expired or invalid.\nPlease refresh it in the .env file.\n\n<code>${msg.slice(0, 200)}</code>`
+                        );
                     }
-                    await logAlert(
-                        adset.adset_id,
-                        alert.rule,
-                        alert.severity,
-                        metrics.spend,
-                        alert.message
-                    );
+                } else {
+                    logger.error(`Failed to fetch data for account ${account.name}`, { error: msg, accountId });
+                }
+                continue; // Skip this account, try the next
+            }
+
+            if (adsets.length === 0) {
+                logger.info(`No active adsets for ${account.name}`);
+                continue;
+            }
+
+            logger.info(`Processing ${adsets.length} adset(s) for ${account.name}`);
+
+            let alertsFired = 0;
+            let totalSpend = 0;
+            let totalClicks = 0;
+            let totalImpressions = 0;
+            let totalAtc = 0;
+            let totalPurchases = 0;
+            let totalRevenue = 0;
+            let totalProfit = 0;
+
+            for (const adset of adsets) {
+                const cogs = campaignCogsMap[adset.campaign_name] || 0;
+                const metrics = parseMetrics(adset, cogs, businessOverhead);
+
+                totalSpend += metrics.spend;
+                totalClicks += metrics.clicks;
+                totalImpressions += metrics.impressions;
+                totalAtc += metrics.atc;
+                totalPurchases += metrics.purchases;
+                totalRevenue += metrics.revenue || 0;
+                totalProfit += metrics.net_profit || 0;
+
+                if (!DRY_RUN) {
+                    await saveSnapshot(adset, metrics, accountId);
                 }
 
-                alertsFired++;
-            }
-        }
+                // Check thresholds
+                const currentRules = activeRules.length > 0 ? activeRules : (DRY_RUN ? [
+                    { name: 'mock_rule', emoji: '⚙️', severity: 'low', message_template: 'Mock alert run {spend}', conditions: [] }
+                ] : []);
 
-        // 7. Save daily stats with real Shopify revenue
-        if (!DRY_RUN) {
-            await saveDailyStats({
-                totalSpend,
-                totalClicks,
-                totalImpressions,
-                totalAtc,
-                totalPurchases,
-                shopifyRevenue: shopifyData.totalRevenue,
-                shopifyOrderCount: shopifyData.orderCount,
-                activeAdsets: adsets.filter(a => a.effective_status === 'ACTIVE').length,
+                const alerts = checkThresholds(adset, currentRules, cogs, businessOverhead);
+
+                for (const alert of alerts) {
+                    if (!DRY_RUN) {
+                        const alreadySent = await hasAlertedToday(adset.adset_id, alert.rule);
+                        if (alreadySent) {
+                            logger.debug('Alert already sent today, skipping', {
+                                adsetId: adset.adset_id,
+                                rule: alert.rule,
+                            });
+                            continue;
+                        }
+                    }
+
+                    const message = formatAlertMessage(adset, alert);
+
+                    if (DRY_RUN) {
+                        console.log('\n' + '─'.repeat(50));
+                        console.log('📨 ALERT (dry run):');
+                        console.log(message.replace(/<[^>]*>/g, ''));
+                        console.log('─'.repeat(50));
+                    } else {
+                        if (TELEGRAM_ENABLED) {
+                            await sendTelegramAlert(message);
+                        } else {
+                            console.log('\n📨 ALERT (no Telegram):', message.replace(/<[^>]*>/g, ''));
+                        }
+                        await logAlert(
+                            adset.adset_id,
+                            alert.rule,
+                            alert.severity,
+                            metrics.spend,
+                            alert.message,
+                            accountId
+                        );
+                    }
+
+                    alertsFired++;
+                }
+            }
+
+            // Save daily stats per account
+            if (!DRY_RUN) {
+                await saveDailyStats({
+                    totalSpend,
+                    totalClicks,
+                    totalImpressions,
+                    totalAtc,
+                    totalPurchases,
+                    shopifyRevenue: shopifyData.totalRevenue,
+                    shopifyOrderCount: shopifyData.orderCount,
+                    activeAdsets: adsets.filter(a => a.effective_status === 'ACTIVE').length,
+                    alertsFired,
+                    accountId,
+                });
+            }
+
+            grandTotalAlerts += alertsFired;
+
+            logger.info(`── Account ${account.name} done`, {
+                adsets: adsets.length,
                 alertsFired,
+                spend: `€${totalSpend.toFixed(2)}`,
             });
         }
 
         const elapsed = Date.now() - startTime;
-        const roas = totalSpend > 0 && shopifyData.totalRevenue > 0
-            ? (shopifyData.totalRevenue / totalSpend).toFixed(2) + 'x'
-            : '—';
-
         logger.info(`Cycle #${cycleCount} complete`, {
-            adsets: adsets.length,
-            alertsFired,
-            spend: `€${totalSpend.toFixed(2)}`,
-            shopifyRevenue: `€${shopifyData.totalRevenue.toFixed(2)}`,
-            shopifyOrders: shopifyData.orderCount,
-            roas,
+            accounts: accounts.length,
+            totalAlerts: grandTotalAlerts,
             durationMs: elapsed,
         });
 
@@ -300,6 +341,60 @@ const start = async () => {
     // Schedule recurring checks
     cronJob = cron.schedule(CRON_SCHEDULE, runCycle);
     logger.info(`Cron scheduled: ${CRON_SCHEDULE}`);
+
+    // Schedule daily digest at 23:55
+    if (TELEGRAM_ENABLED) {
+        digestJob = cron.schedule('55 23 * * *', async () => {
+            logger.info('Sending daily digest...');
+            try {
+                // Fetch today's stats from the database
+                const { createClient } = await import('@supabase/supabase-js');
+                const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+                const today = new Date().toISOString().split('T')[0];
+
+                const { data: rows } = await supabase
+                    .from('daily_stats')
+                    .select('*')
+                    .eq('stat_date', today);
+
+                if (rows && rows.length > 0) {
+                    // Aggregate across accounts
+                    let totalSpend = 0, totalAtc = 0, totalPurchases = 0;
+                    let shopifyRevenue = 0, shopifyOrderCount = 0;
+
+                    for (const r of rows) {
+                        totalSpend += parseFloat(r.total_spend) || 0;
+                        totalAtc += r.total_atc || 0;
+                        totalPurchases += r.total_purchases || 0;
+                        shopifyRevenue = Math.max(shopifyRevenue, parseFloat(r.shopify_revenue) || 0);
+                        shopifyOrderCount = Math.max(shopifyOrderCount, r.shopify_order_count || 0);
+                    }
+
+                    const roas = totalSpend > 0 ? shopifyRevenue / totalSpend : 0;
+
+                    // Count alerts today
+                    const { count: alertCount } = await supabase
+                        .from('alert_log')
+                        .select('*', { count: 'exact', head: true })
+                        .gte('created_at', `${today}T00:00:00`);
+
+                    await sendDailyDigest({
+                        totalSpend,
+                        shopifyRevenue,
+                        roas,
+                        totalAtc,
+                        totalPurchases,
+                        shopifyOrderCount,
+                        alertCount: alertCount || 0,
+                        netProfit: shopifyRevenue - totalSpend, // simplified
+                    });
+                }
+            } catch (err) {
+                logger.error('Daily digest failed', { error: err.message });
+            }
+        });
+        logger.info('Daily digest scheduled at 23:55');
+    }
 };
 
 start().catch((err) => {

@@ -69,7 +69,7 @@ const campaigns: CampaignRow[] = [...campaignMap.entries()]
         const roas = spend > 0 && revenue > 0 ? revenue / spend : 0;
         const hasActive = ads.some((a) => a.effective_status === "ACTIVE");
 
-        const cogs = campaignSettings[name] || 0;
+        const cogs = campaignSettings[name] || 13;
         const totalCogs = purchases * cogs;
         const transactionFees =
             revenue * ((overhead?.transaction_fee_percent || 0) / 100) +

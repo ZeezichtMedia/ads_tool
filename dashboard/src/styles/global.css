@@ -396,11 +396,13 @@ body {
 }
 
 .stat-value {
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.2;
-  font-feature-settings: 'tnum';
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'tnum', 'cv01';
+  letter-spacing: -0.02em;
 }
 
 .stat-label {
@@ -901,8 +903,9 @@ body {
 }
 
 .campaign-table td.metric {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 12px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'tnum';
+  font-size: 13.5px;
   text-align: right;
   color: var(--text-secondary);
 }

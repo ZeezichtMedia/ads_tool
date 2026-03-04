@@ -12,6 +12,9 @@ import {
   resolveRange,
   getBusinessOverhead,
   getCampaignSettings,
+  getPreviousPeriodRange,
+  getPerAccountBreakdown,
+  getDailySpendHistory,
 } from "../lib/db";
 import {
   classifyPerformance,
@@ -41,19 +44,36 @@ let stats: any = {
 };
 let overhead: any = null;
 let campaignSettings: Record<string, number> = {};
+let prevStats: any = null;
+let accountBreakdown: any[] = [];
+let spendHistory: any[] = [];
 let dbError = false;
 
+const prevRange = getPreviousPeriodRange(range);
+
 try {
-  const [adsetsData, statsData, overheadData, settingsData] = await Promise.all(
-    [
-      getSnapshotsForRange(range),
-      getStatsForRange(range),
-      getBusinessOverhead(),
-      getCampaignSettings(),
-    ],
-  );
+  const [
+    adsetsData,
+    statsData,
+    overheadData,
+    settingsData,
+    prevStatsData,
+    accountData,
+    spendHistData,
+  ] = await Promise.all([
+    getSnapshotsForRange(range),
+    getStatsForRange(range),
+    getBusinessOverhead(),
+    getCampaignSettings(),
+    getStatsForRange(prevRange),
+    getPerAccountBreakdown(range),
+    getDailySpendHistory(7),
+  ]);
   adsets = adsetsData;
   stats = statsData;
+  prevStats = prevStatsData;
+  accountBreakdown = accountData;
+  spendHistory = spendHistData;
   overhead = overheadData;
 
   const settingsDict: Record<string, number> = {};
@@ -77,7 +97,7 @@ if (!stats.hasShopifyData) {
 
 let totalCogs = 0;
 for (const a of adsets) {
-  const cogs = campaignSettings[a.campaign_name] || 0;
+  const cogs = campaignSettings[a.campaign_name] || 13;
   totalCogs += cogs * (parseInt(a.purchases) || 0);
 }
 
@@ -177,6 +197,13 @@ const statusCounts = STATUS_ORDER.filter((s) => statusMap.has(s)).map((s) => ({
             totalPurchases={stats.totalPurchases}
             shopifyOrders={stats.shopifyOrderCount}
             hasShopifyData={stats.hasShopifyData}
+            prevSpend={prevStats?.totalSpend || 0}
+            prevAtc={prevStats?.totalAtc || 0}
+            prevPurchases={prevStats?.totalPurchases || 0}
+            prevRevenue={prevStats?.shopifyRevenue || 0}
+            prevRoas={prevStats?.roas || 0}
+            accountBreakdown={accountBreakdown}
+            spendHistory={spendHistory}
           />
 
           <FilterBar

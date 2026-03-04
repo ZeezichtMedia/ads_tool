@@ -1,0 +1,527 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Sidebar from "../components/Sidebar.astro";
+import Icon from "../components/Icon.astro";
+
+// ─── Fetch orders from Supabase ────────────────────────────
+const SUPABASE_URL = import.meta.env.SUPABASE_URL || '';
+const SUPABASE_KEY = import.meta.env.SUPABASE_ANON_KEY || '';
+
+let orders: any[] = [];
+let dbError = false;
+
+const daysParam = Astro.url.searchParams.get('days') || '30';
+const days = parseInt(daysParam);
+
+// Build query based on days
+let query = `${SUPABASE_URL}/rest/v1/shopify_orders?order=created_at.desc&limit=1000`;
+if (!isNaN(days) && days > 0) {
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+  query += `&created_at=gte.${startDate.toISOString()}`;
+}
+
+try {
+  const res = await fetch(query, {
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
+  });
+  orders = await res.json();
+  if (!Array.isArray(orders)) orders = [];
+} catch (err) {
+  console.error("Failed to load orders:", err);
+  dbError = true;
+}
+
+// Helper: parse line_items from DB (stored as JSON string)
+function parseLineItems(li: any): any[] {
+  if (Array.isArray(li)) return li;
+  if (typeof li === 'string') { try { return JSON.parse(li); } catch { return []; } }
+  return [];
+}
+
+// ─── Compute analytics ──────────────────────────────────────
+const totalRevenue = orders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
+const totalOrders = orders.length;
+const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+// Product analytics
+const productMap = new Map<string, { title: string; units: number; revenue: number }>();
+for (const order of orders) {
+  const items = parseLineItems(order.line_items);
+  for (const item of items) {
+    const key = item.product_id?.toString() || item.title;
+    const existing = productMap.get(key) || { title: item.title, units: 0, revenue: 0 };
+    existing.units += item.quantity || 1;
+    existing.revenue += parseFloat(item.price || 0) * (item.quantity || 1);
+    productMap.set(key, existing);
+  }
+}
+const topProducts = [...productMap.values()]
+  .sort((a, b) => b.units - a.units)
+  .slice(0, 10);
+
+// Daily revenue breakdown
+const dailyMap = new Map<string, { revenue: number; orders: number }>();
+for (const order of orders) {
+  const day = order.created_at?.split('T')[0] || 'unknown';
+  const existing = dailyMap.get(day) || { revenue: 0, orders: 0 };
+  existing.revenue += parseFloat(order.total_price || 0);
+  existing.orders += 1;
+  dailyMap.set(day, existing);
+}
+const dailyData = [...dailyMap.entries()].sort(([a], [b]) => b.localeCompare(a));
+
+// Today info
+const today = new Date().toISOString().split('T')[0];
+const todayOrders = orders.filter(o => o.created_at?.startsWith(today));
+const todayRevenue = todayOrders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
+---
+
+<Layout title="Orders">
+  <Sidebar />
+
+  <div class="main-content">
+    <div class="page-header">
+      <div class="header-left">
+        <h2 class="page-title">Shopify Orders</h2>
+        <span class="page-subtitle">{totalOrders} orders loaded</span>
+      </div>
+      <div class="header-actions">
+        <select class="days-filter" onchange="window.location.href = '?days=' + this.value">
+          <option value="7" selected={days === 7}>Last 7 Days</option>
+          <option value="14" selected={days === 14}>Last 14 Days</option>
+          <option value="30" selected={days === 30}>Last 30 Days</option>
+          <option value="all" selected={isNaN(days) || days === 0}>All Time</option>
+        </select>
+      </div>
+    </div>
+
+    {dbError ? (
+      <div class="error-container">
+        <div class="error-card">
+          <Icon name="wifi-off" size={48} />
+          <h3 class="error-title">Database Connection Error</h3>
+          <p class="error-text">Cannot connect to Supabase.</p>
+        </div>
+      </div>
+    ) : (
+      <>
+        <!-- Summary cards -->
+        <div class="order-summary">
+          <div class="summary-card accent-green">
+            <div class="summary-icon"><Icon name="euro" size={20} /></div>
+            <div class="summary-data">
+              <span class="summary-value">€{totalRevenue.toFixed(2)}</span>
+              <span class="summary-label">Total Revenue</span>
+            </div>
+          </div>
+          <div class="summary-card accent-blue">
+            <div class="summary-icon"><Icon name="shopping-cart" size={20} /></div>
+            <div class="summary-data">
+              <span class="summary-value">{totalOrders}</span>
+              <span class="summary-label">Total Orders</span>
+            </div>
+          </div>
+          <div class="summary-card accent-purple">
+            <div class="summary-icon"><Icon name="target" size={20} /></div>
+            <div class="summary-data">
+              <span class="summary-value">€{avgOrderValue.toFixed(2)}</span>
+              <span class="summary-label">Avg Order Value</span>
+            </div>
+          </div>
+          <div class="summary-card accent-orange">
+            <div class="summary-icon"><Icon name="euro" size={20} /></div>
+            <div class="summary-data">
+              <span class="summary-value">€{todayRevenue.toFixed(2)}</span>
+              <span class="summary-label">Today's Revenue · {todayOrders.length} orders</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Two-column: Top Products + Daily Breakdown -->
+        <div class="analytics-grid">
+          <!-- Top Products -->
+          <div class="analytics-card">
+            <h3 class="card-title"><Icon name="bar-chart-3" size={16} /> Top Products</h3>
+            {topProducts.length === 0 ? (
+              <p class="empty-text">No product data available yet</p>
+            ) : (
+              <div class="product-list">
+                {topProducts.map((p, i) => (
+                  <div class="product-row">
+                    <span class="product-rank">#{i + 1}</span>
+                    <div class="product-info">
+                      <span class="product-name">{p.title}</span>
+                      <span class="product-meta">{p.units} sold · €{p.revenue.toFixed(2)}</span>
+                    </div>
+                    <div class="product-bar-bg">
+                      <div
+                        class="product-bar"
+                        style={`width: ${Math.round((p.units / (topProducts[0]?.units || 1)) * 100)}%`}
+                      ></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <!-- Daily Breakdown -->
+          <div class="analytics-card">
+            <h3 class="card-title"><Icon name="trending-up" size={16} /> Daily Breakdown</h3>
+            {dailyData.length === 0 ? (
+              <p class="empty-text">No daily data available yet</p>
+            ) : (
+              <div class="daily-list">
+                {dailyData.map(([date, data]) => {
+                  const parts = date.split('-');
+                  const displayDate = `${parts[2]}/${parts[1]}`;
+                  const isToday = date === today;
+                  return (
+                    <div class={`daily-row ${isToday ? 'today' : ''}`}>
+                      <span class="daily-date">
+                        {displayDate}
+                        {isToday && <span class="today-badge">TODAY</span>}
+                      </span>
+                      <span class="daily-orders">{data.orders} orders</span>
+                      <span class="daily-revenue">€{data.revenue.toFixed(2)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <!-- Orders table -->
+        <div class="analytics-card" style="margin-top: 16px;">
+          <h3 class="card-title"><Icon name="credit-card" size={16} /> Recent Orders</h3>
+          {orders.length === 0 ? (
+            <p class="empty-text">No orders synced yet. Orders will appear after the next polling cycle.</p>
+          ) : (
+            <div class="table-wrap">
+              <table class="orders-table">
+                <thead>
+                  <tr>
+                    <th>Order</th>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Items</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.slice(0, 50).map(order => {
+                    const date = new Date(order.created_at);
+                    const timeStr = `${date.getDate().toString().padStart(2,'0')}/${(date.getMonth()+1).toString().padStart(2,'0')} ${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}`;
+                    const items = parseLineItems(order.line_items);
+                    const itemCount = items.reduce((s: number, i: any) => s + (i.quantity || 1), 0);
+                    const status = order.financial_status || 'pending';
+                    const statusClass = status === 'paid' ? 'status-paid' : status === 'refunded' ? 'status-refunded' : 'status-pending';
+                    return (
+                      <tr>
+                        <td class="order-name">{order.order_name}</td>
+                        <td class="order-date">{timeStr}</td>
+                        <td class="order-customer">{order.customer_name || '—'}</td>
+                        <td class="order-items">
+                          <span class="item-count">{itemCount}×</span>
+                          <span class="item-names">{items.map((i: any) => i.title).slice(0, 2).join(', ')}{items.length > 2 ? '...' : ''}</span>
+                        </td>
+                        <td class="order-total">€{parseFloat(order.total_price || 0).toFixed(2)}</td>
+                        <td><span class={`status-badge ${statusClass}`}>{status}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </>
+    )}
+  </div>
+</Layout>
+
+<style>
+  .order-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .header-left {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+
+  .days-filter {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .days-filter:focus {
+    border-color: var(--accent-color);
+  }
+
+  .summary-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .summary-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .accent-green .summary-icon { background: rgba(34, 197, 94, 0.15); color: rgb(34, 197, 94); }
+  .accent-blue .summary-icon { background: rgba(59, 130, 246, 0.15); color: rgb(59, 130, 246); }
+  .accent-purple .summary-icon { background: rgba(168, 85, 247, 0.15); color: rgb(168, 85, 247); }
+  .accent-orange .summary-icon { background: rgba(249, 115, 22, 0.15); color: rgb(249, 115, 22); }
+
+  .summary-data { display: flex; flex-direction: column; }
+
+  .summary-value {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: 'tnum';
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+  }
+
+  .summary-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  .analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 16px;
+  }
+
+  .analytics-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .empty-text { color: var(--text-muted); font-size: 13px; }
+
+  /* ── Product List ─────────────── */
+  .product-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .product-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .product-rank {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+    width: 24px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .product-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .product-name {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .product-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .product-bar-bg {
+    width: 80px;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.06);
+    flex-shrink: 0;
+  }
+
+  .product-bar {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, rgb(59, 130, 246), rgb(168, 85, 247));
+    transition: width 0.3s ease;
+  }
+
+  /* ── Daily Breakdown ────────── */
+  .daily-list { display: flex; flex-direction: column; gap: 2px; }
+
+  .daily-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    transition: background 0.15s;
+  }
+
+  .daily-row:hover { background: rgba(255,255,255,0.03); }
+
+  .daily-row.today { background: rgba(34, 197, 94, 0.08); }
+
+  .daily-date {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-feature-settings: 'tnum';
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 80px;
+  }
+
+  .today-badge {
+    font-size: 9px;
+    background: rgb(34, 197, 94);
+    color: white;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .daily-orders { color: var(--text-muted); font-feature-settings: 'tnum'; }
+
+  .daily-revenue {
+    font-weight: 700;
+    color: rgb(34, 197, 94);
+    font-feature-settings: 'tnum';
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* ── Orders Table ──────────── */
+  .table-wrap { overflow-x: auto; }
+
+  .orders-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .orders-table th {
+    text-align: left;
+    padding: 10px 12px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+  }
+
+  .orders-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: var(--text-secondary);
+  }
+
+  .orders-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .order-name {
+    font-weight: 700;
+    color: var(--text-primary) !important;
+    font-feature-settings: 'tnum';
+  }
+
+  .order-date { font-feature-settings: 'tnum'; font-size: 12px; white-space: nowrap; }
+  .order-customer { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .order-items {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 200px;
+  }
+
+  .item-count {
+    font-weight: 700;
+    color: var(--accent-color);
+    font-size: 12px;
+  }
+
+  .item-names {
+    font-size: 12px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .order-total {
+    font-weight: 700;
+    color: rgb(34, 197, 94) !important;
+    font-feature-settings: 'tnum';
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  .status-badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  .status-paid { background: rgba(34, 197, 94, 0.15); color: rgb(34, 197, 94); }
+  .status-pending { background: rgba(249, 115, 22, 0.15); color: rgb(249, 115, 22); }
+  .status-refunded { background: rgba(239, 68, 68, 0.15); color: rgb(239, 68, 68); }
+</style>

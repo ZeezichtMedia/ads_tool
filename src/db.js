@@ -55,6 +55,11 @@ export const initDb = async () => {
     logger.info('Using Supabase REST API — tables managed via dashboard');
 };
 
+// ─── Meta Accounts ──────────────────────────────────────
+export const getEnabledAccounts = async () => {
+    return supabaseGet('meta_accounts', 'is_enabled=eq.true&order=created_at.asc');
+};
+
 // ─── Alert Deduplication ─────────────────────────────────
 export const hasAlertedToday = async (adsetId, ruleName) => {
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
@@ -66,7 +71,7 @@ export const hasAlertedToday = async (adsetId, ruleName) => {
 };
 
 // ─── Log Alert ───────────────────────────────────────────
-export const logAlert = async (adsetId, ruleName, severity, spend, message) => {
+export const logAlert = async (adsetId, ruleName, severity, spend, message, accountId = null) => {
     try {
         const today = new Date().toISOString().split('T')[0];
         await supabasePost('alert_log', {
@@ -76,15 +81,16 @@ export const logAlert = async (adsetId, ruleName, severity, spend, message) => {
             spend_at_alert: spend,
             message,
             alert_date: today,
+            account_id: accountId,
         });
-        logger.debug('Alert logged', { adsetId, ruleName, spend });
+        logger.debug('Alert logged', { adsetId, ruleName, spend, accountId });
     } catch (err) {
         logger.error('Failed to log alert', { error: err.message, adsetId, ruleName });
     }
 };
 
 // ─── Save Adset Snapshot ─────────────────────────────────
-export const saveSnapshot = async (adset, metrics) => {
+export const saveSnapshot = async (adset, metrics, accountId = null) => {
     try {
         await supabasePost('adset_snapshots_v2', {
             adset_id: adset.adset_id,
@@ -101,8 +107,9 @@ export const saveSnapshot = async (adset, metrics) => {
             purchases: metrics.purchases,
             cost_per_atc: metrics.atc > 0 ? (metrics.spend / metrics.atc).toFixed(2) : null,
             cost_per_purchase: metrics.purchases > 0 ? (metrics.spend / metrics.purchases).toFixed(2) : null,
-            shopify_revenue: 0, // will be enriched separately
+            shopify_revenue: 0,
             captured_at: new Date().toISOString(),
+            account_id: accountId,
         });
     } catch (err) {
         logger.error('Failed to save snapshot', { error: err.message, adsetId: adset.adset_id });
@@ -121,6 +128,7 @@ export const saveDailyStats = async ({
     shopifyOrderCount,
     activeAdsets,
     alertsFired,
+    accountId = null,
 }) => {
     try {
         const today = new Date().toISOString().split('T')[0];
@@ -140,10 +148,12 @@ export const saveDailyStats = async ({
             roas,
             active_adsets: activeAdsets,
             alerts_fired: alertsFired,
-        }, 'stat_date');
+            account_id: accountId,
+        }, 'account_id,stat_date');
 
         logger.info('Daily stats saved', {
             date: today,
+            accountId,
             spend: totalSpend,
             revenue: shopifyRevenue,
             roas,
@@ -226,6 +236,58 @@ export const upsertBusinessOverhead = async (overheadData) => {
 // ─── Alert Rules ──────────────────────────────────────
 export const getActiveAlertRules = async () => {
     return supabaseGet('alert_rules', 'is_active=eq.true&order=created_at.desc');
+};
+
+// ─── Shopify Orders Sync ─────────────────────────────────
+export const syncShopifyOrders = async (orders) => {
+    if (!orders || orders.length === 0) return [];
+
+    const newOrders = [];
+
+    for (const order of orders) {
+        const row = {
+            id: order.id,
+            order_name: order.name,
+            created_at: order.created_at,
+            total_price: parseFloat(order.total_price || 0),
+            currency: order.current_total_price_set?.shop_money?.currency_code || 'EUR',
+            financial_status: order.financial_status || 'pending',
+            fulfillment_status: order.fulfillment_status || null,
+            line_items: JSON.stringify((order.line_items || []).map(li => ({
+                title: li.title,
+                quantity: li.quantity,
+                price: li.price,
+                product_id: li.product_id,
+                variant_title: li.variant_title,
+                sku: li.sku,
+            }))),
+            customer_name: order.customer?.first_name
+                ? `${order.customer.first_name} ${order.customer.last_name || ''}`.trim()
+                : null,
+            customer_email: order.customer?.email || null,
+        };
+
+        try {
+            // Check if this order already exists
+            const existing = await supabaseGet('shopify_orders', `id=eq.${order.id}&select=id`);
+            if (!existing || existing.length === 0) {
+                newOrders.push(row);
+            }
+        } catch (err) {
+            // If check fails, still try to upsert
+        }
+
+        try {
+            await supabaseUpsert('shopify_orders', row, 'id');
+        } catch (err) {
+            logger.error('Failed to sync order', { orderId: order.id, error: err.message });
+        }
+    }
+
+    if (newOrders.length > 0) {
+        logger.info(`Synced ${newOrders.length} new Shopify order(s)`);
+    }
+    return newOrders;
 };
 
 // ─── Graceful Shutdown (no-op for REST) ──────────────────

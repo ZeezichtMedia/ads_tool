@@ -75,6 +75,11 @@ const now = new Date().toLocaleTimeString("nl-NL", {
         <span>{now}</span>
     </div>
 
+    <!-- Export CSV -->
+    <button class="icon-btn" title="Export CSV" id="export-csv-btn">
+        <Icon name="file-text" size={14} />
+    </button>
+
     <!-- Refresh button -->
     <button class="icon-btn" title="Refresh Now" id="refresh-btn">
         <Icon name="refresh-cw" size={14} />
@@ -174,4 +179,44 @@ const now = new Date().toLocaleTimeString("nl-NL", {
             if (countEl) countEl.textContent = String(visible);
         });
     });
+
+    // CSV Export
+    const csvBtn = document.getElementById("export-csv-btn");
+    if (csvBtn) {
+        csvBtn.addEventListener("click", () => {
+            const table = document.querySelector(
+                ".campaign-table",
+            ) as HTMLTableElement;
+            if (!table) return;
+
+            const headers: string[] = [];
+            table.querySelectorAll("thead th").forEach((th) => {
+                headers.push((th.textContent || "").trim().replace(/,/g, ""));
+            });
+
+            const rows: string[] = [headers.join(",")];
+            table.querySelectorAll("tbody tr").forEach((tr) => {
+                if ((tr as HTMLElement).style.display === "none") return;
+                const cells: string[] = [];
+                tr.querySelectorAll("td").forEach((td) => {
+                    let val = (td.textContent || "")
+                        .trim()
+                        .replace(/,/g, "")
+                        .replace(/\s+/g, " ");
+                    // Remove non-numeric prefix for currency values
+                    cells.push(`"${val}"`);
+                });
+                rows.push(cells.join(","));
+            });
+
+            const csv = rows.join("\n");
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `campaigns_${new Date().toISOString().split("T")[0]}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    }
 </script>

@@ -110,7 +110,7 @@ export async function getTodayOrders() {
     todayStart.setHours(0, 0, 0, 0);
 
     const data = await shopifyFetch(
-        `orders.json?status=any&created_at_min=${todayStart.toISOString()}&fields=id,name,total_price,current_total_price_set,created_at,line_items&limit=250`
+        `orders.json?status=any&created_at_min=${todayStart.toISOString()}&fields=id,name,total_price,current_total_price_set,created_at,line_items,customer,financial_status,fulfillment_status&limit=250`
     );
 
     const orders = data.orders || [];

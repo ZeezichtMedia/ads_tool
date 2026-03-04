@@ -2,9 +2,24 @@
 import Layout from "../../layouts/Layout.astro";
 import Sidebar from "../../components/Sidebar.astro";
 import CampaignTable from "../../components/CampaignTable.astro";
-import { getLatestSnapshots } from "../../lib/db";
+import {
+    getLatestSnapshots,
+    getBusinessOverhead,
+    getCampaignSettings,
+} from "../../lib/db";
 
-const allAdsets = await getLatestSnapshots();
+const [allAdsets, overhead, settingsData] = await Promise.all([
+    getLatestSnapshots(),
+    getBusinessOverhead(),
+    getCampaignSettings(),
+]);
+
+const settingsDict: Record<string, number> = {};
+if (Array.isArray(settingsData)) {
+    for (const row of settingsData) {
+        settingsDict[row.campaign_name] = row.cogs;
+    }
+}
 
 // Filter to only non-ACTIVE adsets (PAUSED, CAMPAIGN_PAUSED, etc.)
 const adsets = allAdsets.filter((a: any) => a.effective_status !== "ACTIVE");
@@ -19,6 +34,10 @@ const adsets = allAdsets.filter((a: any) => a.effective_status !== "ACTIVE");
                 >{adsets.length} paused / inactive adsets</span
             >
         </div>
-        <CampaignTable adsets={adsets} />
+        <CampaignTable
+            adsets={adsets}
+            overhead={overhead}
+            campaignSettings={settingsDict}
+        />
     </div>
 </Layout>

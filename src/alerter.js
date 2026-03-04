@@ -88,3 +88,41 @@ ${errorMessage}
 
     return sendMessage(message);
 };
+
+// ─── Daily Digest ────────────────────────────────────────
+export const sendDailyDigest = async (stats) => {
+    const {
+        totalSpend = 0,
+        shopifyRevenue = 0,
+        roas = 0,
+        totalAtc = 0,
+        totalPurchases = 0,
+        shopifyOrderCount = 0,
+        alertCount = 0,
+        netProfit = 0,
+        topCampaign = null,
+        worstCampaign = null,
+    } = stats;
+
+    const profitEmoji = netProfit > 0 ? '💰' : '📉';
+    const roasEmoji = roas >= 2 ? '🟢' : roas >= 1 ? '🟡' : '🔴';
+
+    let message = `📊 <b>Daily Summary — ${new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' })}</b>
+
+💶 <b>Spend:</b> €${totalSpend.toFixed(2)}
+🛒 <b>Revenue:</b> €${shopifyRevenue.toFixed(2)}
+${roasEmoji} <b>ROAS:</b> ${roas.toFixed(2)}x
+${profitEmoji} <b>Net Profit:</b> €${netProfit.toFixed(2)}
+
+🛍️ <b>ATC:</b> ${totalAtc} | <b>Purchases:</b> ${totalPurchases} | <b>Orders:</b> ${shopifyOrderCount}
+🔔 <b>Alerts fired:</b> ${alertCount}`;
+
+    if (topCampaign) {
+        message += `\n\n🏆 <b>Best:</b> ${topCampaign.name} (€${topCampaign.spend.toFixed(2)} spend, ${topCampaign.roas.toFixed(2)}x ROAS)`;
+    }
+    if (worstCampaign) {
+        message += `\n⚠️ <b>Worst:</b> ${worstCampaign.name} (€${worstCampaign.spend.toFixed(2)} spend, ${worstCampaign.roas.toFixed(2)}x ROAS)`;
+    }
+
+    return sendMessage(message);
+};
