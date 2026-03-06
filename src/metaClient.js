@@ -56,6 +56,7 @@ export const fetchAdsetInsights = async (accountId) => {
         'adset_id',
         'adset_name',
         'campaign_name',
+        'campaign_id',
         'spend',
         'impressions',
         'clicks',                        // all clicks (for reference)
@@ -149,6 +150,7 @@ export const fetchAdsetInsights = async (accountId) => {
                     adset_id: a.adset_id,
                     adset_name: a.adset_name,
                     campaign_name: a.campaign_name,
+                    campaign_id: a.campaign_id || null,
                     effective_status: statusMap.get(a.adset_id) || 'UNKNOWN',
                     spend: a.spend,
                     impressions: a.impressions,

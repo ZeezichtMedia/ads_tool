@@ -11,11 +11,11 @@
 import 'dotenv/config';
 import cron from 'node-cron';
 import { logger } from './logger.js';
-import { initDb, hasAlertedToday, logAlert, saveSnapshot, saveDailyStats, closeDb, getActiveAlertRules, getCampaignSettings, getBusinessOverhead, getEnabledAccounts, syncShopifyOrders } from './db.js';
+import { initDb, hasAlertedToday, logAlert, saveSnapshot, saveDailyStats, closeDb, getActiveAlertRules, getCampaignSettings, getBusinessOverhead, getEnabledAccounts, syncShopifyOrders, syncShopifyProducts } from './db.js';
 import { fetchAdsetInsights, getMockAdsets } from './metaClient.js';
 import { checkThresholds, getATC, getPurchases, parseMetrics } from './thresholds.js';
 import { sendTelegramAlert, sendStartupMessage, sendErrorAlert, sendDailyDigest } from './alerter.js';
-import { isConfigured as isShopifyConfigured, getTodayOrders } from './shopifyClient.js';
+import { isConfigured as isShopifyConfigured, getTodayOrders, getProducts } from './shopifyClient.js';
 
 // ─── Configuration ───────────────────────────────────────
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -151,6 +151,16 @@ const runCycle = async () => {
                 await syncShopifyOrders(shopifyData.orders);
             } catch (err) {
                 logger.error('Failed to sync Shopify orders', { error: err.message });
+            }
+        }
+
+        // Sync Shopify products to DB for the Orders page lookup
+        if (SHOPIFY_ENABLED && !DRY_RUN) {
+            try {
+                const products = await getProducts();
+                await syncShopifyProducts(products);
+            } catch (err) {
+                logger.error('Failed to sync Shopify products', { error: err.message });
             }
         }
 

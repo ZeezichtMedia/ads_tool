@@ -20,7 +20,7 @@ async function shopifyFetch(endpoint) {
 
 async function metaFetch(dateStr) {
     const fields = [
-        'adset_id', 'adset_name', 'campaign_name', 'spend', 'impressions',
+        'adset_id', 'adset_name', 'campaign_name', 'campaign_id', 'spend', 'impressions',
         'clicks', 'cpc', 'cpm', 'inline_link_clicks', 'unique_inline_link_clicks',
         'cost_per_unique_inline_link_click', 'inline_link_click_ctr', 'unique_link_clicks_ctr',
         'actions', 'cost_per_action_type'
@@ -70,6 +70,7 @@ async function metaFetch(dateStr) {
         adset_id: a.adset_id,
         adset_name: a.adset_name,
         campaign_name: a.campaign_name,
+        campaign_id: a.campaign_id || null,
         spend: parseFloat(a.spend || 0),
         impressions: parseInt(a.impressions || 0),
         clicks: parseInt(a.clicks || 0),
@@ -126,6 +127,7 @@ async function saveToSupabase(dateStr, adsets, shopifyData) {
         const snapshot = {
             adset_id: a.adset_id,
             campaign_name: a.campaign_name,
+            campaign_id: a.campaign_id || null,
             adset_name: a.adset_name,
             spend: a.spend,
             cpc: a.cpc,

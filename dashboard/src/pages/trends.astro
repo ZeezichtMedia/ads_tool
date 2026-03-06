@@ -8,23 +8,24 @@ let trends: any[] = [];
 let dbError = false;
 
 try {
-  trends = await getDailyTrendsData(30);
+  trends = await getDailyTrendsData(60);
 } catch (err) {
   console.error("Failed to load trends:", err);
   dbError = true;
 }
 
-// Compute summary stats
-const totalSpend = trends.reduce((s, d) => s + d.spend, 0);
-const totalRevenue = trends.reduce((s, d) => s + d.revenue, 0);
+// Compute summary stats (initial render based on 7 days)
+const visibleTrends = trends.slice(-7);
+const totalSpend = visibleTrends.reduce((s, d) => s + d.spend, 0);
+const totalRevenue = visibleTrends.reduce((s, d) => s + d.revenue, 0);
 const avgRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
-const totalPurchases = trends.reduce((s, d) => s + d.purchases, 0);
-const totalAtc = trends.reduce((s, d) => s + d.atc, 0);
-const daysWithData = trends.filter(d => d.spend > 0).length;
+const totalPurchases = visibleTrends.reduce((s, d) => s + d.purchases, 0);
+const totalAtc = visibleTrends.reduce((s, d) => s + d.atc, 0);
+const daysWithData = visibleTrends.filter(d => d.spend > 0).length;
 
 // Shopify stats
-const totalOrders = trends.reduce((s, d) => s + (d.orders || 0), 0);
-const shopifyRevenue = trends.reduce((s, d) => s + (d.revenue || 0), 0);
+const totalOrders = visibleTrends.reduce((s, d) => s + (d.orders || 0), 0);
+const shopifyRevenue = visibleTrends.reduce((s, d) => s + (d.revenue || 0), 0);
 const avgOrderValue = totalOrders > 0 ? shopifyRevenue / totalOrders : 0;
 ---
 
@@ -34,7 +35,7 @@ const avgOrderValue = totalOrders > 0 ? shopifyRevenue / totalOrders : 0;
   <div class="main-content">
     <div class="page-header">
       <h2 class="page-title">Performance Trends</h2>
-      <span class="page-subtitle">Last 30 days</span>
+      <span class="page-subtitle" id="page-subtitle">Last 7 days</span>
     </div>
 
     {dbError ? (
@@ -50,46 +51,49 @@ const avgOrderValue = totalOrders > 0 ? shopifyRevenue / totalOrders : 0;
         <!-- Summary cards -->
         <div class="trend-summary">
           <div class="summary-card">
-            <span class="summary-value">€{totalSpend.toFixed(2)}</span>
+            <span class="summary-value" id="val-spend">€{totalSpend.toFixed(2)}</span>
             <span class="summary-label">Total Spend</span>
           </div>
           <div class="summary-card">
-            <span class="summary-value">€{totalRevenue.toFixed(2)}</span>
+            <span class="summary-value" id="val-revenue">€{totalRevenue.toFixed(2)}</span>
             <span class="summary-label">Total Revenue</span>
           </div>
           <div class="summary-card">
-            <span class={`summary-value ${avgRoas >= 2 ? 'text-good' : avgRoas >= 1 ? 'text-warning' : 'text-danger'}`}>
+            <span id="val-roas" class={`summary-value ${avgRoas >= 2 ? 'text-good' : avgRoas >= 1 ? 'text-warning' : 'text-danger'}`}>
               {avgRoas.toFixed(2)}x
             </span>
             <span class="summary-label">Avg ROAS</span>
           </div>
           <div class="summary-card">
-            <span class="summary-value">{totalPurchases}</span>
+            <span class="summary-value" id="val-purchases">{totalPurchases}</span>
             <span class="summary-label">Total Purchases</span>
           </div>
           <div class="summary-card">
-            <span class="summary-value">{totalAtc}</span>
+            <span class="summary-value" id="val-atc">{totalAtc}</span>
             <span class="summary-label">Total ATCs</span>
           </div>
           <div class="summary-card">
-            <span class="summary-value">{daysWithData}</span>
+            <span class="summary-value" id="val-days">{daysWithData}</span>
             <span class="summary-label">Active Days</span>
           </div>
           <div class="summary-card">
-            <span class="summary-value">{totalOrders}</span>
+            <span class="summary-value" id="val-orders">{totalOrders}</span>
             <span class="summary-label">Total Orders</span>
           </div>
           <div class="summary-card">
-            <span class="summary-value">€{avgOrderValue.toFixed(2)}</span>
+            <span class="summary-value" id="val-aov">€{avgOrderValue.toFixed(2)}</span>
             <span class="summary-label">AOV</span>
           </div>
         </div>
 
         <!-- Period selector -->
         <div class="period-selector">
-          <button class="period-btn active" data-days="7">7D</button>
-          <button class="period-btn" data-days="14">14D</button>
-          <button class="period-btn" data-days="30">30D</button>
+          <button class="period-btn" data-period="today">Vandaag</button>
+          <button class="period-btn" data-period="yesterday">Gisteren</button>
+          <button class="period-btn" data-period="3">3D</button>
+          <button class="period-btn active" data-period="7">7D</button>
+          <button class="period-btn" data-period="14">14D</button>
+          <button class="period-btn" data-period="30">30D</button>
         </div>
 
         <!-- Charts -->
@@ -131,13 +135,110 @@ const avgOrderValue = totalOrders > 0 ? shopifyRevenue / totalOrders : 0;
 <script define:vars={{ trends }}>
   // ─── Chart rendering with hover tooltips ───────────────
   const allData = trends;
-  let visibleDays = 7;
+  let currentPeriod = '7';
 
   // Store chart metadata for hover lookups
   const chartMeta = {};
 
   function getVisibleData() {
-    return allData.slice(-visibleDays);
+    if (!allData || allData.length === 0) return [];
+    
+    if (currentPeriod === 'today') {
+      return [allData[allData.length - 1]];
+    }
+    if (currentPeriod === 'yesterday') {
+      return allData.length > 1 ? [allData[allData.length - 2]] : [];
+    }
+    const days = parseInt(currentPeriod);
+    return allData.slice(-days);
+  }
+
+  function getPreviousData() {
+    if (!allData || allData.length === 0) return [];
+    
+    if (currentPeriod === 'today') {
+      return allData.length > 1 ? [allData[allData.length - 2]] : [];
+    }
+    if (currentPeriod === 'yesterday') {
+      return allData.length > 2 ? [allData[allData.length - 3]] : [];
+    }
+    const days = parseInt(currentPeriod);
+    const endIdx = Math.max(0, allData.length - days);
+    const startIdx = Math.max(0, endIdx - days);
+    return allData.slice(startIdx, endIdx);
+  }
+
+  function calcDelta(current, previous) {
+    if (previous === 0 && current === 0) return { pct: 0, direction: "flat" };
+    if (previous === 0) return { pct: 100, direction: "up" };
+    const pct = ((current - previous) / previous) * 100;
+    if (Math.abs(pct) < 1) return { pct: 0, direction: "flat" };
+    return { pct: Math.abs(pct), direction: pct > 0 ? "up" : "down" };
+  }
+
+  function deltaHtml(current, previous, periodLabel = "", invertColor = false) {
+    const d = calcDelta(current, previous);
+    if (d.direction === "flat") return `<span class="delta-vs">vs ${periodLabel}</span>`;
+    const isGood = invertColor ? d.direction === "down" : d.direction === "up";
+    const color = isGood ? "#22c55e" : "#ef4444";
+    const arrow = d.direction === "up" ? "↑" : "↓";
+    return `<span class="delta-badge" style="color:${color}">${arrow}${d.pct.toFixed(0)}%</span> <span class="delta-vs">vs ${periodLabel}</span>`;
+  }
+
+  function updateSummaryStats() {
+    const data = getVisibleData();
+    const prevData = getPreviousData();
+    
+    let totalSpend = 0, totalRevenue = 0, totalPurchases = 0, totalAtc = 0;
+    let daysWithData = 0, totalOrders = 0, shopifyRevenue = 0;
+
+    data.forEach(d => {
+      totalSpend += d.spend || 0;
+      totalRevenue += d.revenue || 0;
+      totalPurchases += d.purchases || 0;
+      totalAtc += d.atc || 0;
+      if (d.spend > 0) daysWithData++;
+      totalOrders += d.orders || 0;
+      shopifyRevenue += d.revenue || 0;
+    });
+
+    let prevSpend = 0, prevRevenue = 0, prevPurchases = 0, prevAtc = 0;
+    let prevOrders = 0, prevShopifyRevenue = 0;
+
+    prevData.forEach(d => {
+      prevSpend += d.spend || 0;
+      prevRevenue += d.revenue || 0;
+      prevPurchases += d.purchases || 0;
+      prevAtc += d.atc || 0;
+      prevOrders += d.orders || 0;
+      prevShopifyRevenue += d.revenue || 0;
+    });
+
+    const avgRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+    const avgOrderValue = totalOrders > 0 ? shopifyRevenue / totalOrders : 0;
+    const prevRoas = prevSpend > 0 ? prevRevenue / prevSpend : 0;
+    const prevAov = prevOrders > 0 ? prevShopifyRevenue / prevOrders : 0;
+
+    let periodLabel = "previous";
+    if (currentPeriod === 'today') periodLabel = "yesterday";
+    else if (currentPeriod === 'yesterday') periodLabel = "day before";
+    else periodLabel = `prev ${currentPeriod}D`;
+
+    const el = (id) => document.getElementById(id);
+    
+    if (el('val-spend')) el('val-spend').innerHTML = `€${totalSpend.toFixed(2)} ${deltaHtml(totalSpend, prevSpend, periodLabel, true)}`;
+    if (el('val-revenue')) el('val-revenue').innerHTML = `€${totalRevenue.toFixed(2)} ${deltaHtml(totalRevenue, prevRevenue, periodLabel)}`;
+    
+    if (el('val-roas')) {
+      el('val-roas').innerHTML = `${avgRoas.toFixed(2)}x ${deltaHtml(avgRoas, prevRoas, periodLabel)}`;
+      el('val-roas').className = `summary-value ${avgRoas >= 2 ? 'text-good' : avgRoas >= 1 ? 'text-warning' : 'text-danger'}`;
+    }
+    
+    if (el('val-purchases')) el('val-purchases').innerHTML = `${totalPurchases} ${deltaHtml(totalPurchases, prevPurchases, periodLabel)}`;
+    if (el('val-atc')) el('val-atc').innerHTML = `${totalAtc} ${deltaHtml(totalAtc, prevAtc, periodLabel)}`;
+    if (el('val-days')) el('val-days').innerHTML = daysWithData;
+    if (el('val-orders')) el('val-orders').innerHTML = `${totalOrders} ${deltaHtml(totalOrders, prevOrders, periodLabel)}`;
+    if (el('val-aov')) el('val-aov').innerHTML = `€${avgOrderValue.toFixed(2)} ${deltaHtml(avgOrderValue, prevAov, periodLabel)}`;
   }
 
   function drawChart(canvasId, datasets, options = {}) {
@@ -153,7 +254,7 @@ const avgOrderValue = totalOrders > 0 ? shopifyRevenue / totalOrders : 0;
     ctx.clearRect(0, 0, rect.width, rect.height);
 
     const data = getVisibleData();
-    if (data.length < 2) return;
+    if (data.length === 0) return;
 
     const padding = { top: 24, right: 16, bottom: 36, left: 56 };
     const w = rect.width - padding.left - padding.right;
@@ -195,11 +296,17 @@ const avgOrderValue = totalOrders > 0 ? shopifyRevenue / totalOrders : 0;
     // Date labels
     ctx.fillStyle = mutedColor;
     ctx.textAlign = 'center';
-    const step = Math.max(1, Math.floor(data.length / 7));
-    for (let i = 0; i < data.length; i += step) {
-      const x = padding.left + (i / (data.length - 1)) * w;
-      const parts = data[i].date.split('-');
-      ctx.fillText(`${parts[2]}/${parts[1]}`, x, rect.height - 8);
+    
+    if (data.length === 1) {
+      const parts = data[0].date.split('-');
+      ctx.fillText(`${parts[2]}/${parts[1]}`, padding.left + w / 2, rect.height - 8);
+    } else {
+      const step = Math.max(1, Math.floor(data.length / 7));
+      for (let i = 0; i < data.length; i += step) {
+        const x = padding.left + (i / (data.length - 1)) * w;
+        const parts = data[i].date.split('-');
+        ctx.fillText(`${parts[2]}/${parts[1]}`, x, rect.height - 8);
+      }
     }
 
     // Draw lines + fill
@@ -214,14 +321,14 @@ const avgOrderValue = totalOrders > 0 ? shopifyRevenue / totalOrders : 0;
       else ctx.setLineDash([]);
 
       for (let i = 0; i < data.length; i++) {
-        const x = padding.left + (i / (data.length - 1)) * w;
+        const x = data.length === 1 ? padding.left + w / 2 : padding.left + (i / (data.length - 1)) * w;
         const y = padding.top + (1 - (data[i][ds.key] - minVal) / range) * h;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
 
-      if (ds.fill) {
+      if (ds.fill && data.length > 1) {
         const lastX = padding.left + w;
         ctx.lineTo(lastX, padding.top + h);
         ctx.lineTo(padding.left, padding.top + h);
@@ -233,10 +340,10 @@ const avgOrderValue = totalOrders > 0 ? shopifyRevenue / totalOrders : 0;
       // Dots
       ctx.setLineDash([]);
       for (let i = 0; i < data.length; i++) {
-        const x = padding.left + (i / (data.length - 1)) * w;
+        const x = data.length === 1 ? padding.left + w / 2 : padding.left + (i / (data.length - 1)) * w;
         const y = padding.top + (1 - (data[i][ds.key] - minVal) / range) * h;
         ctx.beginPath();
-        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.arc(x, y, data.length === 1 ? 4 : 3, 0, Math.PI * 2);
         ctx.fillStyle = ds.color;
         ctx.fill();
       }
@@ -271,7 +378,7 @@ const avgOrderValue = totalOrders > 0 ? shopifyRevenue / totalOrders : 0;
 
     if (hoverIndex < 0 || hoverIndex >= data.length) return;
 
-    const x = padding.left + (hoverIndex / (data.length - 1)) * w;
+    const x = data.length === 1 ? padding.left + w / 2 : padding.left + (hoverIndex / (data.length - 1)) * w;
 
     // Vertical crosshair line
     ctx.save();
@@ -458,9 +565,19 @@ const avgOrderValue = totalOrders > 0 ? shopifyRevenue / totalOrders : 0;
       // Find nearest data index
       const chartLeft = padding.left;
       const relX = mouseX - chartLeft;
-      if (relX < -10 || relX > w + 10 || data.length < 2) {
+      if (relX < -10 || relX > w + 10 || data.length < 1) {
         // Redraw without hover
         drawChart(cfg.id, cfg.datasets, cfg.options);
+        return;
+      }
+
+      if (data.length === 1) {
+        if (relX > w/2 - 30 && relX < w/2 + 30) {
+          drawChart(cfg.id, cfg.datasets, cfg.options);
+          drawHoverOverlay(cfg.id, 0);
+        } else {
+          drawChart(cfg.id, cfg.datasets, cfg.options);
+        }
         return;
       }
 
@@ -482,12 +599,22 @@ const avgOrderValue = totalOrders > 0 ? shopifyRevenue / totalOrders : 0;
     btn.addEventListener('click', () => {
       document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      visibleDays = parseInt(btn.dataset.days);
+      currentPeriod = btn.dataset.period;
+      
+      const subtitle = document.getElementById('page-subtitle');
+      if (subtitle) {
+        if (currentPeriod === 'today') subtitle.innerText = 'Vandaag';
+        else if (currentPeriod === 'yesterday') subtitle.innerText = 'Gisteren';
+        else subtitle.innerText = `Last ${currentPeriod} days`;
+      }
+
+      updateSummaryStats();
       renderAllCharts();
     });
   });
 
-  // Initial render
+  // Initial render setup based on logic above
+  updateSummaryStats();
   renderAllCharts();
   chartConfigs.forEach(setupHover);
 
@@ -496,6 +623,22 @@ const avgOrderValue = totalOrders > 0 ? shopifyRevenue / totalOrders : 0;
 </script>
 
 <style>
+  :global(.delta-badge) {
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 6px;
+    vertical-align: auto;
+  }
+  
+  :global(.delta-vs) {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-left: 4px;
+    vertical-align: auto;
+    text-transform: lowercase;
+  }
+
   .trend-summary {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));

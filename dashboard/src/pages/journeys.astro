@@ -1,0 +1,405 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Sidebar from "../components/Sidebar.astro";
+import Icon from "../components/Icon.astro";
+
+const SUPABASE_URL = import.meta.env.SUPABASE_URL || '';
+const SUPABASE_KEY = import.meta.env.SUPABASE_ANON_KEY || '';
+const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
+
+let visitors: any[] = [];
+let recentEvents: any[] = [];
+let conversions: any[] = [];
+let funnelData = { pageviews: 0, product_views: 0, add_to_carts: 0, checkouts: 0, purchases: 0 };
+let dbError = false;
+
+try {
+  // Fetch recent visitors
+  const vRes = await fetch(`${SUPABASE_URL}/rest/v1/tracking_visitors?order=last_seen.desc&limit=50`, { headers });
+  if (vRes.ok) visitors = await vRes.json();
+
+  // Fetch recent events (last 24h)
+  const since = new Date();
+  since.setHours(since.getHours() - 24);
+  const eRes = await fetch(`${SUPABASE_URL}/rest/v1/tracking_events?order=timestamp.desc&limit=500&timestamp=gte.${since.toISOString()}`, { headers });
+  if (eRes.ok) recentEvents = await eRes.json();
+
+  // Fetch conversions
+  const cRes = await fetch(`${SUPABASE_URL}/rest/v1/tracking_conversions?order=converted_at.desc&limit=50`, { headers });
+  if (cRes.ok) conversions = await cRes.json();
+
+  // Build funnel
+  for (const e of recentEvents) {
+    if (e.event_type === 'pageview') funnelData.pageviews++;
+    if (e.event_type === 'product_view') funnelData.product_views++;
+    if (e.event_type === 'add_to_cart') funnelData.add_to_carts++;
+    if (e.event_type === 'checkout') funnelData.checkouts++;
+    if (e.event_type === 'purchase') funnelData.purchases++;
+  }
+} catch (err) {
+  console.error("Failed to load tracking data:", err);
+  dbError = true;
+}
+
+// Group events by visitor for journey view
+const journeyMap = new Map<string, any[]>();
+for (const e of recentEvents) {
+  const list = journeyMap.get(e.visitor_id) || [];
+  list.push(e);
+  journeyMap.set(e.visitor_id, list);
+}
+// Sort each visitor's events chronologically
+for (const [vid, evts] of journeyMap) {
+  evts.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+}
+const journeys = [...journeyMap.entries()].slice(0, 20);
+
+// Get unique visitor count
+const uniqueVisitors = visitors.length;
+const totalEvents = recentEvents.length;
+
+function getEventIcon(type: string): string {
+  switch(type) {
+    case 'pageview': return 'eye';
+    case 'product_view': return 'tag';
+    case 'add_to_cart': return 'shopping-cart';
+    case 'checkout': return 'credit-card';
+    case 'purchase': return 'check-circle';
+    default: return 'circle';
+  }
+}
+
+function getEventColor(type: string): string {
+  switch(type) {
+    case 'pageview': return 'rgba(148, 163, 184, 0.8)';
+    case 'product_view': return 'rgb(59, 130, 246)';
+    case 'add_to_cart': return 'rgb(249, 115, 22)';
+    case 'checkout': return 'rgb(168, 85, 247)';
+    case 'purchase': return 'rgb(34, 197, 94)';
+    default: return 'rgba(148, 163, 184, 0.5)';
+  }
+}
+
+function formatTime(ts: string): string {
+  const d = new Date(ts);
+  return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+}
+
+function shortenUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.pathname.length > 40 ? u.pathname.substring(0, 40) + '…' : u.pathname;
+  } catch {
+    return url || '';
+  }
+}
+---
+
+<Layout title="Customer Journeys">
+  <Sidebar />
+  <div class="main-content">
+    <div class="page-header">
+      <div class="header-left">
+        <h2 class="page-title">Customer Journeys</h2>
+        <span class="page-subtitle">First-party tracking · Last 24 hours</span>
+      </div>
+    </div>
+
+    {dbError ? (
+      <div class="error-card">
+        <Icon name="wifi-off" size={48} />
+        <h3>Database Connection Error</h3>
+      </div>
+    ) : (
+      <>
+        <!-- Summary cards -->
+        <div class="summary-grid">
+          <div class="summary-card accent-blue">
+            <div class="summary-icon"><Icon name="users" size={20} /></div>
+            <div class="summary-data">
+              <span class="summary-value">{uniqueVisitors}</span>
+              <span class="summary-label">Tracked Visitors</span>
+            </div>
+          </div>
+          <div class="summary-card accent-purple">
+            <div class="summary-icon"><Icon name="activity" size={20} /></div>
+            <div class="summary-data">
+              <span class="summary-value">{totalEvents}</span>
+              <span class="summary-label">Events (24h)</span>
+            </div>
+          </div>
+          <div class="summary-card accent-orange">
+            <div class="summary-icon"><Icon name="shopping-cart" size={20} /></div>
+            <div class="summary-data">
+              <span class="summary-value">{funnelData.add_to_carts}</span>
+              <span class="summary-label">Add to Carts</span>
+            </div>
+          </div>
+          <div class="summary-card accent-green">
+            <div class="summary-icon"><Icon name="check-circle" size={20} /></div>
+            <div class="summary-data">
+              <span class="summary-value">{funnelData.purchases}</span>
+              <span class="summary-label">Purchases</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Conversion Funnel -->
+        <div class="analytics-card" style="margin-bottom: 16px;">
+          <h3 class="card-title"><Icon name="filter" size={16} /> Conversion Funnel (24h)</h3>
+          <div class="funnel">
+            {[
+              { label: 'Page Views', count: funnelData.pageviews, color: 'rgba(148, 163, 184, 0.8)' },
+              { label: 'Product Views', count: funnelData.product_views, color: 'rgb(59, 130, 246)' },
+              { label: 'Add to Cart', count: funnelData.add_to_carts, color: 'rgb(249, 115, 22)' },
+              { label: 'Checkout', count: funnelData.checkouts, color: 'rgb(168, 85, 247)' },
+              { label: 'Purchase', count: funnelData.purchases, color: 'rgb(34, 197, 94)' },
+            ].map((step, i) => {
+              const maxCount = Math.max(funnelData.pageviews, 1);
+              const width = Math.max(Math.round((step.count / maxCount) * 100), 4);
+              const prevCount = i === 0 ? step.count : [funnelData.pageviews, funnelData.product_views, funnelData.add_to_carts, funnelData.checkouts, funnelData.purchases][i - 1];
+              const rate = prevCount > 0 ? ((step.count / prevCount) * 100).toFixed(1) : '0';
+              return (
+                <div class="funnel-step">
+                  <div class="funnel-label">
+                    <span class="funnel-name">{step.label}</span>
+                    <span class="funnel-count">{step.count}</span>
+                    {i > 0 && <span class="funnel-rate">{rate}%</span>}
+                  </div>
+                  <div class="funnel-bar-bg">
+                    <div class="funnel-bar" style={`width: ${width}%; background: ${step.color};`}></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <!-- Customer Journeys -->
+        <div class="analytics-card">
+          <h3 class="card-title"><Icon name="map-pin" size={16} /> Visitor Journeys</h3>
+          {journeys.length === 0 ? (
+            <div class="empty-state">
+              <Icon name="compass" size={48} />
+              <h4>No journeys recorded yet</h4>
+              <p>Events will appear here once visitors browse your store with the tracking script installed.</p>
+            </div>
+          ) : (
+            <div class="journeys-list">
+              {journeys.map(([visitorId, events]) => {
+                const visitor = visitors.find(v => v.visitor_id === visitorId);
+                const conversion = conversions.find(c => c.visitor_id === visitorId);
+                const hasPurchase = events.some((e: any) => e.event_type === 'purchase');
+                return (
+                  <div class={`journey-card ${hasPurchase ? 'journey-converted' : ''}`}>
+                    <div class="journey-header">
+                      <div class="journey-visitor">
+                        <Icon name="user" size={14} />
+                        <span class="visitor-id">{visitorId.substring(0, 8)}…</span>
+                        {visitor?.device && <span class="device-badge">{visitor.device}</span>}
+                        {visitor?.browser && <span class="browser-badge">{visitor.browser}</span>}
+                      </div>
+                      <div class="journey-meta">
+                        {visitor?.utm_campaign && (
+                          <span class="utm-badge">
+                            <Icon name="link-2" size={10} /> utm: {visitor.utm_campaign.slice(-8)}…
+                          </span>
+                        )}
+                        {hasPurchase && <span class="purchase-badge">✓ Converted</span>}
+                        {conversion?.order_name && <span class="order-badge">{conversion.order_name}</span>}
+                      </div>
+                    </div>
+                    <div class="journey-timeline">
+                      {events.map((evt: any, idx: number) => (
+                        <div class="timeline-event">
+                          <div class="timeline-dot" style={`background: ${getEventColor(evt.event_type)};`}>
+                            <Icon name={getEventIcon(evt.event_type)} size={10} />
+                          </div>
+                          {idx < events.length - 1 && <div class="timeline-line"></div>}
+                          <div class="timeline-content">
+                            <span class="event-type-label">{evt.event_type.replace('_', ' ')}</span>
+                            <span class="event-url">{shortenUrl(evt.page_url)}</span>
+                            <span class="event-time">{formatTime(evt.timestamp)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </>
+    )}
+  </div>
+</Layout>
+
+<style>
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .summary-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .summary-icon {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .accent-blue .summary-icon { background: rgba(59, 130, 246, 0.15); color: rgb(59, 130, 246); }
+  .accent-purple .summary-icon { background: rgba(168, 85, 247, 0.15); color: rgb(168, 85, 247); }
+  .accent-orange .summary-icon { background: rgba(249, 115, 22, 0.15); color: rgb(249, 115, 22); }
+  .accent-green .summary-icon { background: rgba(34, 197, 94, 0.15); color: rgb(34, 197, 94); }
+
+  .summary-data { display: flex; flex-direction: column; }
+  .summary-value { font-size: 22px; font-weight: 700; color: var(--text-primary); font-feature-settings: 'tnum'; }
+  .summary-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 600; }
+
+  .analytics-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .card-title {
+    font-size: 14px; font-weight: 600; color: var(--text-primary);
+    margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+  }
+
+  /* ── Funnel ──────────────── */
+  .funnel { display: flex; flex-direction: column; gap: 8px; }
+  .funnel-step { display: flex; flex-direction: column; gap: 4px; }
+  .funnel-label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .funnel-name { color: var(--text-primary); font-weight: 600; min-width: 110px; }
+  .funnel-count { color: var(--text-primary); font-weight: 700; font-feature-settings: 'tnum'; }
+  .funnel-rate { color: var(--text-muted); font-size: 11px; font-weight: 600; }
+  .funnel-bar-bg { height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; }
+  .funnel-bar { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+
+  /* ── Journeys ──────────── */
+  .journeys-list { display: flex; flex-direction: column; gap: 12px; }
+
+  .journey-card {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 16px;
+    transition: border-color 0.2s;
+  }
+  .journey-card:hover { border-color: rgba(255,255,255,0.15); }
+  .journey-converted { border-left: 3px solid rgb(34, 197, 94); }
+
+  .journey-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+  .journey-visitor { display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-weight: 600; font-size: 13px; }
+  .journey-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+  .visitor-id { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .device-badge, .browser-badge {
+    font-size: 10px; background: rgba(255,255,255,0.06); color: var(--text-muted);
+    padding: 2px 6px; border-radius: 4px; font-weight: 600;
+  }
+  .utm-badge {
+    font-size: 10px; background: rgba(168, 85, 247, 0.15); color: rgb(216, 180, 254);
+    padding: 2px 6px; border-radius: 4px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 3px;
+  }
+  .purchase-badge {
+    font-size: 10px; background: rgba(34, 197, 94, 0.15); color: rgb(34, 197, 94);
+    padding: 2px 6px; border-radius: 4px; font-weight: 700;
+  }
+  .order-badge {
+    font-size: 10px; background: rgba(59, 130, 246, 0.15); color: rgb(59, 130, 246);
+    padding: 2px 6px; border-radius: 4px; font-weight: 700; font-feature-settings: 'tnum';
+  }
+
+  /* ── Timeline ──────────── */
+  .journey-timeline { display: flex; flex-direction: column; }
+
+  .timeline-event {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    position: relative;
+    padding-bottom: 4px;
+  }
+
+  .timeline-dot {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: white;
+    z-index: 1;
+  }
+
+  .timeline-line {
+    position: absolute;
+    left: 10px;
+    top: 22px;
+    bottom: -4px;
+    width: 2px;
+    background: rgba(255,255,255,0.08);
+  }
+
+  .timeline-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    padding-top: 3px;
+    min-height: 22px;
+    flex-wrap: wrap;
+  }
+
+  .event-type-label {
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: capitalize;
+    min-width: 90px;
+  }
+
+  .event-url {
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 300px;
+  }
+
+  .event-time {
+    color: var(--text-muted);
+    font-feature-settings: 'tnum';
+    font-size: 11px;
+    margin-left: auto;
+  }
+
+  /* ── Empty State ──────── */
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+  }
+  .empty-state h4 { color: var(--text-primary); margin: 12px 0 8px; font-size: 16px; }
+  .empty-state p { font-size: 13px; max-width: 400px; margin: 0 auto; }
+</style>

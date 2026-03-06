@@ -1,0 +1,252 @@
+{
+  "id": 12709825478981,
+  "created_at": "2026-03-06T13:46:04+00:00",
+  "current_total_price_set": {
+    "shop_money": {
+      "amount": "113.00",
+      "currency_code": "GBP"
+    },
+    "presentment_money": {
+      "amount": "113.00",
+      "currency_code": "GBP"
+    }
+  },
+  "financial_status": "paid",
+  "fulfillment_status": null,
+  "name": "#510417",
+  "total_price": "113.00",
+  "customer": {
+    "id": 27181075169605,
+    "created_at": "2026-03-06T13:46:01+00:00",
+    "updated_at": "2026-03-06T13:46:05+00:00",
+    "first_name": "Rachel",
+    "last_name": "Pritchard",
+    "state": "disabled",
+    "note": null,
+    "verified_email": true,
+    "multipass_identifier": null,
+    "tax_exempt": false,
+    "email_marketing_consent": {
+      "state": "not_subscribed",
+      "opt_in_level": "single_opt_in",
+      "consent_updated_at": null
+    },
+    "sms_marketing_consent": null,
+    "tags": "",
+    "email": "rachellouisepritchard@yahoo.co.uk",
+    "phone": null,
+    "currency": "GBP",
+    "tax_exemptions": [],
+    "admin_graphql_api_id": "gid://shopify/Customer/27181075169605",
+    "default_address": {
+      "id": 36828470804805,
+      "customer_id": 27181075169605,
+      "first_name": "Rachel",
+      "last_name": "Pritchard",
+      "company": null,
+      "address1": "The Carltons, Sandhurst Lane",
+      "address2": "Sandhurst",
+      "city": "Gloucester",
+      "province": null,
+      "country": "United Kingdom",
+      "zip": "GL2 9NP",
+      "phone": "+447470603522",
+      "name": "Rachel Pritchard",
+      "province_code": null,
+      "country_code": "GB",
+      "country_name": "United Kingdom",
+      "default": true
+    }
+  },
+  "line_items": [
+    {
+      "id": 36689500471621,
+      "admin_graphql_api_id": "gid://shopify/LineItem/36689500471621",
+      "current_quantity": 1,
+      "fulfillable_quantity": 1,
+      "fulfillment_service": "manual",
+      "fulfillment_status": null,
+      "gift_card": false,
+      "grams": 0,
+      "name": "Rose | Women’s Draped Neck Long Sleeve Satin Blouses - Navy Blue / L",
+      "price": "39.95",
+      "price_set": {
+        "shop_money": {
+          "amount": "39.95",
+          "currency_code": "GBP"
+        },
+        "presentment_money": {
+          "amount": "39.95",
+          "currency_code": "GBP"
+        }
+      },
+      "product_exists": true,
+      "product_id": 15712448053573,
+      "properties": [],
+      "quantity": 1,
+      "requires_shipping": true,
+      "sku": null,
+      "taxable": true,
+      "title": "Rose | Women’s Draped Neck Long Sleeve Satin Blouses",
+      "total_discount": "0.00",
+      "total_discount_set": {
+        "shop_money": {
+          "amount": "0.00",
+          "currency_code": "GBP"
+        },
+        "presentment_money": {
+          "amount": "0.00",
+          "currency_code": "GBP"
+        }
+      },
+      "variant_id": 57252711858501,
+      "variant_inventory_management": null,
+      "variant_title": "Navy Blue / L",
+      "vendor": "Ivy & Iris London",
+      "tax_lines": [],
+      "duties": [],
+      "discount_allocations": [
+        {
+          "amount": "5.99",
+          "amount_set": {
+            "shop_money": {
+              "amount": "5.99",
+              "currency_code": "GBP"
+            },
+            "presentment_money": {
+              "amount": "5.99",
+              "currency_code": "GBP"
+            }
+          },
+          "discount_application_index": 0
+        }
+      ]
+    },
+    {
+      "id": 36689500504389,
+      "admin_graphql_api_id": "gid://shopify/LineItem/36689500504389",
+      "current_quantity": 1,
+      "fulfillable_quantity": 1,
+      "fulfillment_service": "manual",
+      "fulfillment_status": null,
+      "gift_card": false,
+      "grams": 0,
+      "name": "Mariella™ - Two-Piece Layered Set - Black / L",
+      "price": "49.99",
+      "price_set": {
+        "shop_money": {
+          "amount": "49.99",
+          "currency_code": "GBP"
+        },
+        "presentment_money": {
+          "amount": "49.99",
+          "currency_code": "GBP"
+        }
+      },
+      "product_exists": true,
+      "product_id": 15723801805125,
+      "properties": [],
+      "quantity": 1,
+      "requires_shipping": true,
+      "sku": "DWOD2-BM505009",
+      "taxable": true,
+      "title": "Mariella™ - Two-Piece Layered Set",
+      "total_discount": "0.00",
+      "total_discount_set": {
+        "shop_money": {
+          "amount": "0.00",
+          "currency_code": "GBP"
+        },
+        "presentment_money": {
+          "amount": "0.00",
+          "currency_code": "GBP"
+        }
+      },
+      "variant_id": 57304343216453,
+      "variant_inventory_management": null,
+      "variant_title": "Black / L",
+      "vendor": "Ivy & Iris London",
+      "tax_lines": [],
+      "duties": [],
+      "discount_allocations": [
+        {
+          "amount": "7.50",
+          "amount_set": {
+            "shop_money": {
+              "amount": "7.50",
+              "currency_code": "GBP"
+            },
+            "presentment_money": {
+              "amount": "7.50",
+              "currency_code": "GBP"
+            }
+          },
+          "discount_application_index": 0
+        }
+      ]
+    },
+    {
+      "id": 36689500537157,
+      "admin_graphql_api_id": "gid://shopify/LineItem/36689500537157",
+      "current_quantity": 1,
+      "fulfillable_quantity": 1,
+      "fulfillment_service": "manual",
+      "fulfillment_status": null,
+      "gift_card": false,
+      "grams": 0,
+      "name": "Amelia™ - Elegant Tummy Covering Dress - Black (Almost sold out) / M",
+      "price": "42.99",
+      "price_set": {
+        "shop_money": {
+          "amount": "42.99",
+          "currency_code": "GBP"
+        },
+        "presentment_money": {
+          "amount": "42.99",
+          "currency_code": "GBP"
+        }
+      },
+      "product_exists": true,
+      "product_id": 15716094869829,
+      "properties": [],
+      "quantity": 1,
+      "requires_shipping": true,
+      "sku": "DRESSLAURA-BLACK-M",
+      "taxable": true,
+      "title": "Amelia™ - Elegant Tummy Covering Dress",
+      "total_discount": "0.00",
+      "total_discount_set": {
+        "shop_money": {
+          "amount": "0.00",
+          "currency_code": "GBP"
+        },
+        "presentment_money": {
+          "amount": "0.00",
+          "currency_code": "GBP"
+        }
+      },
+      "variant_id": 57268715422021,
+      "variant_inventory_management": null,
+      "variant_title": "Black (Almost sold out) / M",
+      "vendor": "Ivy & Iris London",
+      "tax_lines": [],
+      "duties": [],
+      "discount_allocations": [
+        {
+          "amount": "6.44",
+          "amount_set": {
+            "shop_money": {
+              "amount": "6.44",
+              "currency_code": "GBP"
+            },
+            "presentment_money": {
+              "amount": "6.44",
+              "currency_code": "GBP"
+            }
+          },
+          "discount_application_index": 0
+        }
+      ]
+    }
+  ]
+}

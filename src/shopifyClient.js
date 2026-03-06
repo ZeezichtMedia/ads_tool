@@ -110,7 +110,7 @@ export async function getTodayOrders() {
     todayStart.setHours(0, 0, 0, 0);
 
     const data = await shopifyFetch(
-        `orders.json?status=any&created_at_min=${todayStart.toISOString()}&fields=id,name,total_price,current_total_price_set,created_at,line_items,customer,financial_status,fulfillment_status&limit=250`
+        `orders.json?status=any&created_at_min=${todayStart.toISOString()}&fields=id,name,total_price,current_total_price_set,created_at,line_items,customer,financial_status,fulfillment_status,landing_site&limit=250`
     );
 
     const orders = data.orders || [];
@@ -174,7 +174,7 @@ export async function getTodayOrders() {
  */
 export async function getProducts() {
     const data = await shopifyFetch(
-        'products.json?fields=id,title,handle,variants,status&limit=250'
+        'products.json?fields=id,title,handle,variants,status,image&limit=250'
     );
     return data.products || [];
 }

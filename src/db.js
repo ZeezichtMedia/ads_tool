@@ -96,6 +96,7 @@ export const saveSnapshot = async (adset, metrics, accountId = null) => {
             adset_id: adset.adset_id,
             adset_name: adset.adset_name,
             campaign_name: adset.campaign_name,
+            campaign_id: adset.campaign_id || null,
             effective_status: adset.effective_status || 'UNKNOWN',
             spend: metrics.spend,
             cpc: metrics.cpc,
@@ -245,6 +246,24 @@ export const syncShopifyOrders = async (orders) => {
     const newOrders = [];
 
     for (const order of orders) {
+        // ── Extract UTM campaign from landing_site URL ──────────────────────
+        let utmCampaign = null;
+        if (order.landing_site) {
+            try {
+                // Shopify landing_site is always a path like /products/x?utm_campaign=...
+                // Use a base URL so the URL parser accepts it
+                const url = new URL(order.landing_site, 'https://placeholder.invalid');
+                // Priority: utm_campaign > adcampaign_id > utm_content (ad level)
+                utmCampaign =
+                    url.searchParams.get('utm_campaign') ||
+                    url.searchParams.get('adcampaign_id') ||
+                    url.searchParams.get('utm_content') ||
+                    null;
+            } catch {
+                // malformed URL — leave null
+            }
+        }
+
         const row = {
             id: order.id,
             order_name: order.name,
@@ -265,6 +284,7 @@ export const syncShopifyOrders = async (orders) => {
                 ? `${order.customer.first_name} ${order.customer.last_name || ''}`.trim()
                 : null,
             customer_email: order.customer?.email || null,
+            utm_campaign: utmCampaign,
         };
 
         try {
@@ -288,6 +308,34 @@ export const syncShopifyOrders = async (orders) => {
         logger.info(`Synced ${newOrders.length} new Shopify order(s)`);
     }
     return newOrders;
+};
+
+// ─── Shopify Products Sync ───────────────────────────────
+export const syncShopifyProducts = async (products) => {
+    if (!products || products.length === 0) return 0;
+
+    let syncedCount = 0;
+    for (const product of products) {
+        const row = {
+            id: product.id,
+            title: product.title,
+            handle: product.handle,
+            image_url: product.image?.src || null,
+        };
+
+        try {
+            await supabaseUpsert('shopify_products', row, 'id');
+            // Supabase REST does not return counts easily on upsert with Prefer minimum, so we just increment
+            syncedCount++;
+        } catch (err) {
+            logger.error('Failed to sync product', { productId: product.id, error: err.message });
+        }
+    }
+
+    if (syncedCount > 0) {
+        logger.info(`Synced ${syncedCount} Shopify products`);
+    }
+    return syncedCount;
 };
 
 // ─── Graceful Shutdown (no-op for REST) ──────────────────
